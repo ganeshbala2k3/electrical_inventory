@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const mysql = require("mysql2");
-const bcrypt = require("bcryptjs");
 const moment = require("moment");
 require("dotenv").config();
 
@@ -36,20 +35,15 @@ app.post("/login", async (req, res) => {
       }
   
       // Fetch user from the database
-      const sql = `SELECT * FROM users WHERE email = ? AND role = ?`;
-      const [data] = await db.query(sql, [email, role]);
+      const sql = `SELECT * FROM users WHERE email = ? AND role = ? AND password_hash = ?`;
+      const [data] = await db.query(sql, [email, role, password]);
   
       if (data.length === 0) {
         return res.status(401).json({ success: false, message: "Invalid credentials" });
       }
   
       const user = data[0];
-  
-      // Compare the entered password with the hashed password
-      const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-      if (!isPasswordValid) {
-        return res.status(401).json({ success: false, message: "Invalid credentials" });
-      }
+
   
       // If password is valid, return success response
       res.json({ success: true, user: { id: user.user_id, username: user.username, role: user.role } });
@@ -107,10 +101,7 @@ app.get("/domains", async (req, res) => {
 // ✅ Get Categories of a Specific Domain
 app.get("/categories", async (req, res) => {
     try {
-        const { domain } = req.query;
-        if (!domain) return res.status(400).json({ message: "Domain is required!" });
-
-        const [results] = await db.query("SELECT DISTINCT category_name FROM items WHERE domain = ?", [domain]);
+        const [results] = await db.query("SELECT DISTINCT category_name FROM categories");
         const categories = results.map(row => row.category_name);
         res.json(categories);
     } catch (err) {
@@ -531,7 +522,7 @@ app.get("/purchaselist", async (req, res) => {
 app.get("/suppliers", async (req, res) => {
   try {
     // Fetch all suppliers from the database
-    const [suppliers] = await db.query("SELECT supplier_id, supplier_name, contact_person, phone, address FROM suppliers;");
+    const [suppliers] = await db.query("SELECT gstin, supplier_name, contact_person, phone_number, address FROM suppliers;");
     res.json(suppliers); // Return the list of suppliers
   } catch (err) {
     console.error("Error fetching suppliers:", err);
@@ -541,6 +532,7 @@ app.get("/suppliers", async (req, res) => {
 
 app.post("/addSupplier", async (req, res) => {
   const { supplier_id, supplier_name, contact_person, phone, address } = req.body;
+
 
   console.log("Request Body:", req.body); // Log the incoming request body
 
@@ -552,7 +544,7 @@ app.post("/addSupplier", async (req, res) => {
 
   try {
     const insertSupplierQuery = `
-      INSERT INTO suppliers (supplier_id, supplier_name, contact_person, phone, address)
+      INSERT INTO suppliers (gstin, supplier_name,contact_person, phone_number, address)
       VALUES (?, ?, ?, ?, ?)
     `;
     console.log("Executing query:", insertSupplierQuery);
@@ -602,77 +594,40 @@ app.get("/user/:id", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-app.post("/login", async (req, res) => {
-  try {
-    const { email, password, role } = req.body;
 
-    // Validate input
-    if (!email || !password || !role) {
-      return res.status(400).json({ success: false, message: "All fields are required" });
-    }
+app.delete("/supplier/:gstin", (req, res) => {
+  const { gstin } = req.params;
 
-    // Fetch user from the database
-    const sql = `SELECT * FROM users WHERE email = ? AND role = ?`;
-    const [data] = await db.query(sql, [email, role]);
+  const query = "DELETE FROM suppliers WHERE gstin = ?";
 
-    if (data.length === 0) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
-    }
+  db.query(query, [gstin], (err, result) => {
+    if (err) return res.status(500).json({ message: "Database error" });
 
-    const user = data[0];
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Supplier not found" });
 
-    // Compare the entered password with the hashed password
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
-    }
+    res.json({ message: "Supplier deleted successfully" });
+  });
+});
 
-    // If password is valid, return success response with user details
+
+app.post("/deleteMultipleSuppliers", (req, res) => {
+  const { ids } = req.body; // array of GSTIN values
+
+  if (!ids || ids.length === 0)
+    return res.status(400).json({ message: "No supplier IDs provided" });
+
+  const query = "DELETE FROM suppliers WHERE gstin IN (?)";
+
+  db.query(query, [ids], (err, result) => {
+    if (err) return res.status(500).json({ message: "Database error" });
+
     res.json({
-      success: true,
-      user: {
-        id: user.user_id,
-        username: user.username,
-        role: user.role,
-      },
+      message: `${result.affectedRows} supplier(s) deleted successfully`,
     });
-  } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+  });
 });
 
-// ✅ Update User Password
-app.put("/user/:id", async (req, res) => {
-  const { id } = req.params;
-  const { currentPassword, newPassword } = req.body;
-
-  try {
-    // Fetch the user's current hashed password from the database
-    const [user] = await db.query("SELECT password_hash FROM users WHERE user_id = ?", [id]);
-    console.log("Fetched user:", user); // Debugging log
-    if (user.length === 0) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    // Compare the current password with the hashed password in the database
-    const isMatch = await bcrypt.compare(currentPassword, user[0].password_hash);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, message: "Current password is incorrect" });
-    }
-
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update the password in the database
-    await db.query("UPDATE users SET password_hash = ? WHERE user_id = ?", [hashedPassword, id]);
-
-    res.json({ success: true, message: "Password updated successfully" });
-  } catch (error) {
-    console.error("Error updating password:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
-  }
-});
 
 // ✅ Start Server
 app.listen(PORT, () => {
