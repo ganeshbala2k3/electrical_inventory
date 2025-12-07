@@ -80,7 +80,7 @@ const Purchases = () => {
       <Form layout="vertical" onFinish={handleAddItem} style={{ width: 400 }}>
         
         <Form.Item label="Item Name" name="item_name" rules={[{ required: true }]}>
-          <Input placeholder="Example: PVC Wire Roll" />
+          <Input placeholsuppliersder="Example: PVC Wire Roll" />
         </Form.Item>
 
      <Form.Item label="Category" name="category_name" rules={[{ required: true }]}>

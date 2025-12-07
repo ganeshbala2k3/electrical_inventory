@@ -59,11 +59,12 @@ const Suppliers = () => {
   };
 
 // Delete single supplier
-const deleteSupplier = async (id) => {
+const deleteSupplier = async (gstin) => {
   setLoading(true);
   try {
-    const response = await axios.delete(`${port}supplier/${id}`);
+    const response = await axios.delete(`${port}deletesupplier/${gstin}`);
     message.success(response.data?.message || "Supplier deleted successfully");
+    console.log("success"); 
     await fetchSuppliers();
     setTimeout(() => setLoading(false), 150);
   } catch (error) {

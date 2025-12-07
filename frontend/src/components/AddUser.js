@@ -20,7 +20,7 @@ const AddUser = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e.preventDefault(); 
 
     // Validate phone number
     if (!/^\d{10}$/.test(formData.phone)) {
@@ -29,7 +29,7 @@ const AddUser = () => {
     }
 
     try {
-      const response = await axios.post(`${port}users`, formData);
+      const response = await axios.post(`${port}adduser`, formData);
       if (response.data.success) {
         alert("User added successfully!");
         navigate("/dash"); // Redirect to the dashboard
@@ -77,7 +77,7 @@ const AddUser = () => {
           <input
             type="text"
             name="phone"
-            value={formData.phone}
+            value={formData.phone_number}
             onChange={handleInputChange}
             required
             style={{ width: "100%", padding: "8px", marginTop: "5px" }}

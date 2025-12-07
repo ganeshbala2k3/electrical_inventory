@@ -317,16 +317,16 @@ app.put("/items/:id", async (req, res) => {
   
   
   
-  // issue table
-  app.get("/issued_items", async (req, res) => {
-    try {
-        const [data] = await db.query("SELECT * FROM issued_items;");
-        res.json(data);
-    } catch (err) {
-        console.error("Error fetching items:", err);
-        res.status(500).json({ error: "Server error" });
-    }
-});
+//   // issue table
+//   app.get("/issued_items", async (req, res) => {
+//     try {
+//         const [data] = await db.query("SELECT * FROM issued_items;");
+//         res.json(data);
+//     } catch (err) {
+//         console.error("Error fetching items:", err);
+//         res.status(500).json({ error: "Server error" });
+//     }
+// });
 
 app.post("/purchases", async (req, res) => {
   const { supplier_id, purchase_date, items } = req.body;
@@ -575,61 +575,192 @@ app.get("/users", async (req, res) => {
 });
 // ✅ Get User Details by ID
 app.get("/user/:id", async (req, res) => {
+
   const { id } = req.params;
 
+
+  console.log(id);
   try {
     // Fetch user details excluding the password_hash
-    const [user] = await db.query(
-      "SELECT user_id, username, email, phone, role, created_at,password_hash FROM users WHERE user_id = ?",
+    const [rows] = await db.query(
+      "SELECT user_id, username, email, phone_number, role, created_at,password_hash FROM users WHERE user_id = ?",
       [id]
     );
 
-    if (user.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.json({ success: true, user: user[0] });
+    res.json({ success: true, user: rows[0] });
+
   } catch (error) {
     console.error("Error fetching user details:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-app.delete("/supplier/:gstin", (req, res) => {
-  const { gstin } = req.params;
-
-  const query = "DELETE FROM suppliers WHERE gstin = ?";
-
-  db.query(query, [gstin], (err, result) => {
-    if (err) return res.status(500).json({ message: "Database error" });
+app.delete("/deletesupplier/:gstin", async (req, res) => {
+  try {
+    const { gstin } = req.params;
+    
+    const query = "DELETE FROM suppliers WHERE gstin = ?";
+    
+    const [result] = await db.query(query, [gstin]);
+    console.log(result);
 
     if (result.affectedRows === 0)
-      return res.status(404).json({ message: "Supplier not found" });
+      return res.status(404).json({ success: false, message: "Supplier not found" });
 
-    res.json({ message: "Supplier deleted successfully" });
-  });
+    res.json({ success: true, message: "Supplier deleted successfully" });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 });
 
 
-app.post("/deleteMultipleSuppliers", (req, res) => {
-  const { ids } = req.body; // array of GSTIN values
 
-  if (!ids || ids.length === 0)
-    return res.status(400).json({ message: "No supplier IDs provided" });
+app.post("/deleteMultipleSuppliers", async (req, res) => {
+  try {
+    const { ids } = req.body; // Array of GSTIN values
 
-  const query = "DELETE FROM suppliers WHERE gstin IN (?)";
+    if (!ids || ids.length === 0) {
+      return res.status(400).json({ success: false, message: "No supplier IDs provided" });
+    }
 
-  db.query(query, [ids], (err, result) => {
-    if (err) return res.status(500).json({ message: "Database error" });
+    const query = "DELETE FROM suppliers WHERE gstin IN (?)";
 
-    res.json({
-      message: `${result.affectedRows} supplier(s) deleted successfully`,
+    const [result] = await db.query(query, [ids]); // <-- FIXED
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "No suppliers found to delete" });
+    }
+
+    res.json({ success: true, message: `${result.affectedRows} supplier(s) deleted successfully` });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+app.put("/change-password/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { currentPassword, newPassword } = req.body;
+
+    console.log("User ID:", userId);
+    console.log("Received Data:", req.body);
+
+    // Check if current password is correct
+    const [rows] = await db.execute(
+      "SELECT password_hash FROM users WHERE user_id = ?",
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    if (rows[0].password_hash !== currentPassword) {
+      return res.json({ success: false, message: "Current password is incorrect" });
+    }
+
+    // Update with new password
+    const [updateResult] = await db.execute(
+      "UPDATE users SET password_hash = ? WHERE user_id = ?",
+      [newPassword, userId]
+    );
+
+    if (updateResult.affectedRows === 0) {
+      return res.json({
+        success: false,
+        message: "Password not updated. Something went wrong."
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Password updated successfully!"
     });
-  });
+
+  } catch (error) {
+    console.error(error);
+    return res.json({
+      success: false,
+      message: "Server error while updating password"
+    });
+  }
 });
+
+
+// app.post("/change-password/:id", async (req, res) => {
+//   const userId = req.params;
+//   const { currentPassword, newPassword } = req.body;
+//   console.log(newPassword);
+
+//   if (!currentPassword || !newPassword) {
+//     return res.json({
+//       success: false,
+//       message: "Both current and new password are required.",
+//     });
+//   }
+
+//   try {
+//     // 1️⃣ Fetch user password from DB
+//     const [rows] = await db.execute("SELECT password_hash FROM users WHERE user_id = ?", [userId]);
+
+//     if (rows.length === 0) {
+//       return res.json({ success: false, message: "User not found" });
+//     }
+
+//     const storedPassword = rows[0].password;
+
+//     // 2️⃣ Compare current password
+//     if (storedPassword !== currentPassword) {
+//       return res.json({ success: false, message: "Current password is incorrect" });
+//     }
+
+//     // 3️⃣ Update new password
+//     
+
+//     
+// });
 
 
 // ✅ Start Server
 app.listen(PORT, () => {
     console.log(`✅ Server is running on :${PORT}`);
+});
+
+app.post("/adduser", async (req, res) => {
+  const { username, email, phone, password, role } = req.body;
+
+
+  console.log("Request Body:", req.body); // Log the incoming request body
+
+  // Validate input
+  if (!username || !email || !phone || !password || !role) {
+    console.error("Validation failed. Missing required fields.");
+    return res.status(400).json({ success: false, message: "All fields are required." });
+  }
+
+  try {
+    const userQuery = `
+      INSERT INTO users (username, email,phone_number, password_hash, role)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    await db.query(userQuery, [username, email, phone, password, role]);
+    res.json({ success: true, message: "User added successfully." });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      console.error("Duplicate entry error:", err);
+      return res.status(409).json({ success: false, message: "User ID already exists." });
+    }
+    console.error("Error adding supplier:", err); // Log the error
+    res.status(500).json({ success: false, message: "Database error.", error: err.message });
+  }
 });
