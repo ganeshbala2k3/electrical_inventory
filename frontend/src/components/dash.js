@@ -21,6 +21,7 @@ import PurchasesList from "./PurchasesList";
 import Users from "./Users";
 import Home from "./Home";
 import Profile from "./Profile";
+import AddCategory from "./categoryadd";
 import { port } from "./porturl";
 
 
@@ -52,6 +53,9 @@ const Dash = () => {
   };
 
   // Show Home page
+  const handleAddCategory =() =>{
+    setActivePage('addCategory')
+  }
   const handleShowHome = () => {
     setActivePage("home");
   };
@@ -129,6 +133,8 @@ const Dash = () => {
           >
             Profile
           </Menu.Item>
+          
+        
           <Menu.Item
             key="users"
             icon={<UserOutlined />}
@@ -160,6 +166,13 @@ const Dash = () => {
             onClick={handleShowAddSupplier}
           >
             Suppliers
+          </Menu.Item>
+          <Menu.Item
+            key="addCategory"
+            icon={<UserOutlined />}
+            onClick={handleAddCategory}
+          >
+            Add Category
           </Menu.Item>
           <Menu.Item
             key="purchases"
@@ -196,6 +209,8 @@ const Dash = () => {
           <Home />
         ) : activePage === "addUser" ? (
           <AddUser />
+        ) : activePage === "addCategory" ? (
+          <AddCategory />
         ) : activePage === "issuedItems" ? (
           <IssuedItemsTable />
         ) : activePage === "addItems" ? (

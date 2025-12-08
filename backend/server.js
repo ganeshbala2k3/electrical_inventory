@@ -100,15 +100,17 @@ app.get("/domains", async (req, res) => {
 
 // ✅ Get Categories of a Specific Domain
 app.get("/categories", async (req, res) => {
-    try {
-        const [results] = await db.query("SELECT DISTINCT category_name FROM categories");
-        const categories = results.map(row => row.category_name);
-        res.json(categories);
-    } catch (err) {
-        console.error("Error fetching categories:", err);
-        res.status(500).json({ message: "Database error", error: err });
-    }
+  try {
+    const sql = "SELECT category_id, category_name FROM categories ORDER BY category_name ASC";
+    const [rows] = await db.query(sql);
+    
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ message: "Database error while fetching categories" });
+  }
 });
+
 
 // ✅ Get All Items
 app.get("/items", async (req, res) => {
@@ -522,7 +524,7 @@ app.get("/purchaselist", async (req, res) => {
 app.get("/suppliers", async (req, res) => {
   try {
     // Fetch all suppliers from the database
-    const [suppliers] = await db.query("SELECT gstin, supplier_name, contact_person, phone_number, address FROM suppliers;");
+    const [suppliers] = await db.query("SELECT gstin, supplier_name FROM suppliers;");
     res.json(suppliers); // Return the list of suppliers
   } catch (err) {
     console.error("Error fetching suppliers:", err);
@@ -695,6 +697,57 @@ app.put("/change-password/:id", async (req, res) => {
   }
 });
 
+app.get("/categories/:categoryId/attributes", async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    const query = `
+      SELECT 
+        a.attribute_id,
+        a.attribute_name,
+        av.value_id,
+        av.value
+      FROM attributes a
+      LEFT JOIN attribute_values av ON av.attribute_id = a.attribute_id
+      WHERE a.category_id = ?
+      ORDER BY a.attribute_name, av.value;
+    `;
+
+    const [rows] = await db.query(query, [categoryId]);
+
+    if (!rows.length) {
+      return res.json({});
+    }
+
+    // Convert flat rows → grouped object
+    const formatted = {};
+
+    rows.forEach(row => {
+      if (!formatted[row.attribute_name]) {
+        formatted[row.attribute_name] = {
+          attribute_id: row.attribute_id,
+          values: []
+        };
+      }
+
+      if (row.value) {
+        formatted[row.attribute_name].values.push({
+          value_id: row.value_id,
+          value: row.value
+        });
+      }
+    });
+
+    res.json(formatted);
+
+  } catch (error) {
+    console.error("Error fetching attributes:", error);
+    res.status(500).json({
+      message: "Backend error while fetching attributes",
+      error
+    });
+  }
+});
 
 // app.post("/change-password/:id", async (req, res) => {
 //   const userId = req.params;
@@ -762,5 +815,41 @@ app.post("/adduser", async (req, res) => {
     }
     console.error("Error adding supplier:", err); // Log the error
     res.status(500).json({ success: false, message: "Database error.", error: err.message });
+  }
+});
+
+app.post("/add-categories", async (req, res) => {
+  try {
+    const { category_name } = req.body;
+    await db.query("INSERT INTO categories (category_name) VALUES (?)", [category_name]);
+    res.json({ message: "Category added" });
+  } catch {
+    res.status(500).json({ message: "Error adding category" });
+  }
+});
+
+app.post("/add-attributes", async (req, res) => {
+  try {
+    const { category_id, attribute_name } = req.body;
+    await db.query("INSERT INTO attributes (category_id, attribute_name) VALUES (?, ?)", [
+      category_id,
+      attribute_name
+    ]);
+    res.json({ message: "Attribute added" });
+  } catch {
+    res.status(500).json({ message: "Error adding attribute" });
+  }
+});
+
+app.post("/add-attribute-values", async (req, res) => {
+  try {
+    const { attribute_id, value } = req.body;
+    await db.query("INSERT INTO attribute_values (attribute_id, value) VALUES (?, ?)", [
+      attribute_id,
+      value
+    ]);
+    res.json({ message: "Value added" });
+  } catch {
+    res.status(500).json({ message: "Error adding value" });
   }
 });
