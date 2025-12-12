@@ -7,21 +7,59 @@ const { Option } = Select;
 
 export default function IssueItems() {
   const [form] = Form.useForm();
+
   const [categories, setCategories] = useState([]);
   const [attributes, setAttributes] = useState({});
   const [stock, setStock] = useState([]);
   const [filteredStock, setFilteredStock] = useState([]);
+
   const [cart, setCart] = useState([]);
+
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  // Load categories
+  const [recipients, setRecipients] = useState([]);
+  const [loggedUser, setLoggedUser] = useState("");
+
+  // -----------------------
+  // LOAD INITIAL DATA
+  // -----------------------
   useEffect(() => {
-    axios.get(`${port}categories`)
-      .then(res => setCategories(res.data))
-      .catch(() => message.error("Failed to load categories"));
+    loadCategories();
+    loadRecipients();
+    loadUser();
   }, []);
 
-  // Handle category change
+  const loadCategories = async () => {
+    try {
+      const res = await axios.get(`${port}categories`);
+      setCategories(res.data);
+    } catch {
+      message.error("Failed to load categories");
+    }
+  };
+
+  const loadRecipients = async () => {
+    try {
+      const res = await axios.get(`${port}recipients`);
+      setRecipients(res.data);
+    } catch {
+      message.error("Failed to load recipients");
+    }
+  };
+
+  // Load Logged-in User
+  const loadUser = async () => {
+    try {
+      const res = await axios.get(`${port}auth/me`);
+      setLoggedUser(res.data.username);
+    } catch {
+      message.error("Failed to load logged user");
+    }
+  };
+
+  // -----------------------
+  // CATEGORY CHANGE
+  // -----------------------
   const handleCategoryChange = async (_, option) => {
     setSelectedCategory(option.key);
 
@@ -38,7 +76,9 @@ export default function IssueItems() {
     }
   };
 
-  // Filter based on selected attributes
+  // -----------------------
+  // FILTER STOCK BASED ON ATTRIBUTES
+  // -----------------------
   const handleFilter = (values) => {
     let result = [...stock];
 
@@ -51,6 +91,9 @@ export default function IssueItems() {
     setFilteredStock(result);
   };
 
+  // -----------------------
+  // ADD ITEM TO ISSUE CART
+  // -----------------------
   const handleAddToCart = (values) => {
     const selectedItem = filteredStock.find(i => i.item_id === values.item_id);
 
@@ -63,38 +106,52 @@ export default function IssueItems() {
     setCart([
       ...cart,
       {
+        allotment_id: values.allotment_id,
         item_id: selectedItem.item_id,
         item_label: `${selectedItem.category_name} | ${selectedItem.attributes}`,
         quantity: values.quantity,
         issued_to: values.issued_to,
-        issued_by: values.issued_by,
+        issued_by: loggedUser, // AUTO SET
         issue_date: values.issue_date
       }
     ]);
 
     message.success("Added to issue list");
-    form.resetFields(["quantity"]);
+    form.resetFields(["quantity", "allotment_id"]);
   };
 
+  // -----------------------
+  // SUBMIT FULL ISSUE
+  // -----------------------
   const submitIssue = async () => {
-    if (cart.length === 0) return message.error("Issue cart is empty!");
+    if (cart.length === 0) return message.error("Issue cart is empty");
 
     try {
       await axios.post(`${port}issue-items`, { items: cart });
       setCart([]);
       form.resetFields();
-      message.success("Issued Successfully");
-    } catch {
-      message.error("Failed to submit issue");
+      message.success("Items issued successfully");
+
+    } catch (err) {
+      console.log(err);
+      message.error("Failed to issue items");
     }
   };
 
+  // -----------------------
+  // TABLE COLUMNS
+  // -----------------------
   const columns = [
+    { title: "Allotment ID", dataIndex: "allotment_id" },
     { title: "Item", dataIndex: "item_label" },
     { title: "Qty", dataIndex: "quantity" },
     { title: "Issued To", dataIndex: "issued_to" },
     { title: "Issued By", dataIndex: "issued_by" },
-    { title: "Date", dataIndex: "issue_date", render: d => new Date(d).toLocaleDateString() },
+    {
+      title: "Date",
+      dataIndex: "issue_date",
+      render: d => new Date(d).toLocaleDateString()
+    },
     {
       title: "Remove",
       render: (_, record) => (
@@ -115,14 +172,24 @@ export default function IssueItems() {
         onValuesChange={handleFilter}
         onFinish={handleAddToCart}
       >
+
+        {/* Allotment ID */}
+        <Form.Item name="allotment_id" label="Allotment ID" rules={[{ required: true }]}>
+          <Input placeholder="Enter Allotment ID" />
+        </Form.Item>
+
+        {/* CATEGORY */}
         <Form.Item name="category" label="Category" rules={[{ required: true }]}>
           <Select placeholder="Select Category" onChange={handleCategoryChange}>
             {categories.map(c => (
-              <Option key={c.category_id} value={c.category_name}>{c.category_name}</Option>
+              <Option key={c.category_id} value={c.category_name}>
+                {c.category_name}
+              </Option>
             ))}
           </Select>
         </Form.Item>
 
+        {/* DYNAMIC ATTRIBUTE FILTERS */}
         {Object.keys(attributes).map(attr => (
           <Form.Item key={attr} name={`attr_${attr}`} label={attr}>
             <Select>
@@ -133,6 +200,7 @@ export default function IssueItems() {
           </Form.Item>
         ))}
 
+        {/* STOCK DROPDOWN */}
         <Form.Item name="item_id" label="Available Items" rules={[{ required: true }]}>
           <Select>
             {filteredStock.map(item => (
@@ -143,20 +211,30 @@ export default function IssueItems() {
           </Select>
         </Form.Item>
 
+        {/* QUANTITY */}
         <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
           <Input type="number" min={1} />
         </Form.Item>
 
+        {/* RECIPIENT DROPDOWN */}
         <Form.Item name="issued_to" label="Issued To" rules={[{ required: true }]}>
-          <Input />
+          <Select placeholder="Select Recipient">
+            {recipients.map(r => (
+              <Option key={r.recipient_id} value={r.recipient_name}>
+                {r.recipient_name}
+              </Option>
+            ))}
+          </Select>
         </Form.Item>
 
-        <Form.Item name="issued_by" label="Issued By" rules={[{ required: true }]}>
-          <Input />
+        {/* ISSUED BY AUTO-FILLED */}
+        <Form.Item label="Issued By">
+          <Input value={loggedUser} disabled />
         </Form.Item>
 
+        {/* DATE */}
         <Form.Item name="issue_date" label="Issue Date" rules={[{ required: true }]}>
-          <DatePicker style={{ width: "100%" }} />
+          <DatePicker style={{ width: "100%" }} format="DD-MM-YYYY" />
         </Form.Item>
 
         <Button type="primary" htmlType="submit">Add to Issue Cart</Button>

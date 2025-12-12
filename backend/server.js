@@ -319,28 +319,36 @@ app.put("/items/:id", async (req, res) => {
   
   
   
-//   // issue table
-//   app.get("/issued_items", async (req, res) => {
-//     try {
-//         const [data] = await db.query("SELECT * FROM issued_items;");
-//         res.json(data);
-//     } catch (err) {
-//         console.error("Error fetching items:", err);
-//         res.status(500).json({ error: "Server error" });
-//     }
-// });
+app.get("/issued-items", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT ii.issue_date, ii.id, ii.inventory_item_id, ii.quantity, ii.issued_to, ii.issued_by,
+             ii.allotment_id, inv.attributes
+      FROM issued_items ii
+      LEFT JOIN inventory_items inv ON ii.inventory_item_id = inv.item_id
+      ORDER BY ii.issue_date DESC
+    `);
+    console.log("helloooo");
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to fetch issued items" });
+  }
+});
+
+
 app.post("/purchase", async (req, res) => {
   const conn = await db.getConnection();
   await conn.beginTransaction();
 
   try {
-    const { supplier_id, purchase_date, bill_number, items } = req.body;
+    const { supplier_id, purchase_date, bill_number, items ,stock_page_no,stock_entry_date } = req.body;
 
     // Insert purchase record
     const [purchaseResult] = await conn.query(
-      `INSERT INTO purchases (supplier_id, purchase_date, bill_number) 
-       VALUES (?, ?, ?)`,
-      [supplier_id, purchase_date.split("T")[0], bill_number]
+      `INSERT INTO purchases (supplier_id, purchase_date, bill_number,stock_entry_date,stock_page_no) 
+       VALUES (?, ?, ?,?,?)`,
+      [supplier_id, purchase_date, bill_number,stock_entry_date,stock_page_no]
     );
 
     const purchase_id = purchaseResult.insertId;
@@ -358,14 +366,15 @@ app.post("/purchase", async (req, res) => {
       // Insert purchased_items entry
       const [itemRes] = await conn.query(
         `INSERT INTO purchased_items 
-          (purchase_id, category_id, item_name, quantity, unit_price)
-         VALUES (?, ?, ?, ?, ?)`,
+          (purchase_id, category_id, item_name, quantity, unit_price,quantity_type)
+         VALUES (?, ?, ?, ?, ?,?)`,
         [
           purchase_id,
           item.category_id,
           item_name,
           item.quantity,
-          item.unit_price
+          item.unit_price,
+          item.quantity_type
         ]
       );
 
@@ -430,6 +439,8 @@ app.post("/purchase", async (req, res) => {
     conn.release();
   }
 });
+
+
 
 
 
@@ -928,14 +939,16 @@ app.post("/issue-items", async (req, res) => {
 
       // Insert issue record
       await conn.query(
-        `INSERT INTO issued_items (inventory_item_id, quantity, issued_to, issued_by, issue_date)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO issued_items (inventory_item_id, quantity, issued_to, issued_by, issue_date, allotment_id)
+         VALUES (?, ?, ?, ?, ?,?)`,
         [
           item.item_id, 
           item.quantity,
           item.issued_to,
           item.issued_by,
-          item.issue_date.split("T")[0]
+          item.issue_date.split("T")[0],
+          item.allotment_id
+
         ]
       );
 
@@ -960,3 +973,42 @@ app.post("/issue-items", async (req, res) => {
   }
 });
 
+app.post("/recipients", async (req, res) => {
+  try {
+    const { recipient_name, department, phone, email } = req.body;
+    console.log(req.body);
+    await db.query(
+      `INSERT INTO recipients (recipient_name, department, phone, email)
+       VALUES (?, ?, ?, ?)`,
+      [recipient_name, department, phone, email]
+    );
+
+    res.json({ success: true, message: "Recipient added successfully" });
+  } catch (err) {
+    console.error("Error adding recipient:", err);
+    res.status(500).json({ error: "Failed to add recipient" });
+  }
+});
+
+app.get("/recipients", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM recipients ORDER BY recipient_id DESC");
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching recipients:", err);
+    res.status(500).json({ error: "Failed to fetch recipients" });
+  }
+});
+
+app.delete("/recipients/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.query("DELETE FROM recipients WHERE recipient_id = ?", [id]);
+
+    res.json({ success: true, message: "Recipient deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting recipient:", err);
+    res.status(500).json({ error: "Failed to delete recipient" });
+  }
+});

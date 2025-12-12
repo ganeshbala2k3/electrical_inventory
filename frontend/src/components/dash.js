@@ -24,6 +24,7 @@ import Home from "./Home";
 import Profile from "./Profile";
 import AddCategory from "./categoryadd";
 import { port } from "./porturl";
+import Recipients from "./Recipients";
 
 
 const Dash = () => {
@@ -83,6 +84,10 @@ const Dash = () => {
   const handleShowPurchases = () => {
     setActivePage("purchases");
   };
+
+  const handleAddRecipient =()=>{
+    setActivePage("addrec")
+  }
 
   // Show Add Supplier page
   const handleShowAddSupplier = () => {
@@ -164,6 +169,14 @@ const Dash = () => {
           >
             Issued Items
           </Menu.Item>
+
+          <Menu.Item
+            key="addrec"
+            icon={<UserOutlined />}
+            onClick={handleAddRecipient}
+          >
+            Add Recipient
+          </Menu.Item>
           <Menu.Item
             key="supplier"
             icon={<ContainerOutlined />}
@@ -223,6 +236,8 @@ const Dash = () => {
           <AddItems />
         ) : activePage === "purchases" ? (
           <Purchases />
+        ) : activePage === "addrec" ? (
+          <Recipients/>
         ) : activePage === "purchasesList" ? (
           <PurchasesList />
         ) : activePage === "addSupplier" ? (
