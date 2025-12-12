@@ -8,18 +8,18 @@ const { Option } = Select;
 
 const Purchases = () => {
   const [form] = Form.useForm();
+  const [purchaseForm] = Form.useForm();
 
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [attributes, setAttributes] = useState({});
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [billNumber, setInvoiceNumber] = useState("");
 
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // -----------------------
-  // Fetch categories + suppliers
-  // -----------------------
+  // ----------------------- LOAD DATA -----------------------
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -35,25 +35,30 @@ const Purchases = () => {
     loadData();
   }, []);
 
-  // -------------------------------------
-  // Fetch attributes dynamically per category
-  // -------------------------------------
-  const handleCategoryChange = async (value, option) => {
+  // ----------------------- FETCH ATTRIBUTES -----------------------
+  const handleCategoryChange = async (label, option) => {
     setSelectedCategoryId(option.key);
 
     try {
       const res = await axios.get(`${port}categories/${option.key}/attributes`);
       setAttributes(res.data);
-      form.setFieldsValue({ attributes: {} }); // reset old values
+
+      // Reset dynamic attribute selections
+      const newValues = form.getFieldsValue();
+      Object.keys(newValues)
+        .filter((k) => k.startsWith("attr_"))
+        .forEach((k) => (newValues[k] = undefined));
+
+      form.setFieldsValue(newValues);
     } catch {
       message.error("Failed to load attributes");
     }
   };
 
-  // -----------------------
-  // Handle add item to cart
-  // -----------------------
+  // ----------------------- ADD TO CART -----------------------
   const handleAddToCart = (values) => {
+    if (!billNumber) return message.error("Enter invoice number first!");
+
     const formattedAttributes = {};
     Object.keys(values).forEach((key) => {
       if (key.startsWith("attr_")) {
@@ -62,61 +67,51 @@ const Purchases = () => {
     });
 
     const newItem = {
-      item_name: values.item_name,
       category_id: selectedCategoryId,
       attributes: formattedAttributes,
       quantity: values.quantity,
       unit_price: values.unit_price
     };
 
-    // prevent duplicates
-    const duplicate = cart.some((i) => JSON.stringify(i) === JSON.stringify(newItem));
-    if (duplicate) return message.error("Duplicate entry found.");
-
     setCart([...cart, newItem]);
-    message.success("Item added to cart!");
-    form.resetFields(["item_name", "quantity", "unit_price", ...Object.keys(values)]);
+    message.success("Item added!");
+
+    form.resetFields(["quantity", "unit_price", ...Object.keys(values).filter(k => k.startsWith("attr_"))]);
   };
 
-  // -----------------------
-  // Remove from cart
-  // -----------------------
-  const removeItem = (record) => {
-    setCart(cart.filter((i) => i !== record));
-  };
+  const removeItem = (record) => setCart(cart.filter((i) => i !== record));
 
-  // -----------------------
-  // Submit Purchase
-  // -----------------------
-  const handleSubmitPurchase = async (values) => {
-    if (cart.length === 0) return message.error("Cart is empty!");
+  // ----------------------- SUBMIT PURCHASE -----------------------
+const handleSubmitPurchase = async (values) => {
+  if (!billNumber) return message.error("Invoice number missing!");
+  if (cart.length === 0) return message.error("Cart is empty!");
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      const payload = {
-        supplier_id: values.supplier_id,
-        purchase_date: values.purchase_date,
-        items: cart
-      };
+  try {
+    const payload = {
+      supplier_id: values.supplier_id,
+      purchase_date: values.purchase_date.format("YYYY-MM-DD"),
+      bill_number: billNumber,
+      items: cart
+    };
 
-      await axios.post(`${port}purchase`, payload);
+    await axios.post(`${port}purchase`, payload);
 
-      message.success("Purchase submitted!");
-      setCart([]);
-      form.resetFields();
-    } catch (err) {
-      console.error(err);
-      message.error("Failed to submit purchase");
-    }
-    setLoading(false);
-  };
+    message.success("Purchase submitted!");
+    setCart([]);
+    purchaseForm.resetFields();
+    setInvoiceNumber("");
+  } catch (err) {
+    message.error("Purchase failed");
+  }
 
-  // -----------------------
-  // TABLE COLUMNS
-  // -----------------------
+  setLoading(false);
+};
+
+
+  // ----------------------- CART TABLE -----------------------
   const cartColumns = [
-    { title: "Item Name", dataIndex: "item_name" },
     { title: "Category ID", dataIndex: "category_id" },
     {
       title: "Attributes",
@@ -137,7 +132,7 @@ const Purchases = () => {
       render: (r) => (r.unit_price * r.quantity).toFixed(2),
     },
     {
-      title: "Action",
+      title: "Remove",
       render: (record) => (
         <Button danger onClick={() => removeItem(record)}>
           Remove
@@ -148,16 +143,34 @@ const Purchases = () => {
 
   return (
     <div style={{ padding: 20 }}>
-
       <h2>📦 New Purchase</h2>
 
-      {/* ITEM ENTRY FORM */}
-      <Form form={form} layout="vertical" onFinish={handleAddToCart} style={{ width: 400 }}>
-
-        <Form.Item label="Item Name" name="item_name" rules={[{ required: true }]}>
-          <Input placeholder="Ex: Wire Coil" />
+      {/* Purchase Header (Supplier + Invoice + Date) */}
+      <Form form={purchaseForm} layout="vertical" style={{ marginBottom: 30 }}>
+        <Form.Item label="Invoice Number" name="invoice" rules={[{ required: true }]}>
+          <Input
+            placeholder="Enter Invoice No"
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+          />
         </Form.Item>
 
+        <Form.Item label="Supplier" name="supplier_id" rules={[{ required: true }]}>
+          <Select placeholder="Select Supplier">
+            {suppliers.map((s) => (
+              <Option key={s.gstin} value={s.gstin}>
+                {s.supplier_name}
+              </Option>
+            ))}
+          </Select>
+        </Form.Item>
+
+        <Form.Item label="Purchase Date" name="purchase_date" rules={[{ required: true }]}>
+          <DatePicker style={{ width: "100%" }} />
+        </Form.Item>
+      </Form>
+
+      {/* ITEM ENTRY */}
+      <Form form={form} layout="vertical" onFinish={handleAddToCart} style={{ width: 400 }}>
         <Form.Item label="Category" name="category" rules={[{ required: true }]}>
           <Select placeholder="Select Category" onChange={handleCategoryChange}>
             {categories.map((c) => (
@@ -168,14 +181,8 @@ const Purchases = () => {
           </Select>
         </Form.Item>
 
-        {/* Dynamic attributes dropdowns */}
         {Object.keys(attributes).map((attr) => (
-          <Form.Item
-            key={attr}
-            label={attr}
-            name={`attr_${attr}`}
-            rules={[{ required: true }]}
-          >
+          <Form.Item key={attr} label={attr} name={`attr_${attr}`} rules={[{ required: true }]}>
             <Select placeholder={`Select ${attr}`}>
               {attributes[attr].values.map((v) => (
                 <Option key={v.value_id} value={v.value}>
@@ -200,34 +207,13 @@ const Purchases = () => {
       </Form>
 
       {/* CART TABLE */}
-      <Table
-        dataSource={cart}
-        columns={cartColumns}
-        rowKey={(r, i) => i}
-        style={{ marginTop: 30 }}
-      />
+      <Table dataSource={cart} columns={cartColumns} rowKey={(r, i) => i} style={{ marginTop: 30 }} />
 
-      {/* SUBMIT PURCHASE FORM */}
-      <Form layout="vertical" onFinish={handleSubmitPurchase} style={{ width: 400, marginTop: 30 }}>
+      <Button type="primary" style={{ marginTop: 30 }} onClick={() => purchaseForm.submit()} loading={loading}>
+        Submit Purchase
+      </Button>
 
-        <Form.Item label="Supplier" name="supplier_id" rules={[{ required: true }]}>
-          <Select placeholder="Select Supplier">
-            {suppliers.map((s) => (
-              <Option key={s.gstin} value={s.supplier_name}>
-                {s.supplier_name}
-              </Option>
-            ))}
-          </Select>
-        </Form.Item>
-
-        <Form.Item label="Purchase Date" name="purchase_date" rules={[{ required: true }]}>
-          <DatePicker style={{ width: "100%" }} />
-        </Form.Item>
-
-        <Button type="primary" htmlType="submit" loading={loading}>
-          Submit Purchase
-        </Button>
-      </Form>
+      <Form form={purchaseForm} onFinish={handleSubmitPurchase} hidden />
     </div>
   );
 };

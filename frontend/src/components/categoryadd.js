@@ -7,11 +7,16 @@ import { port } from "./porturl";
 const { Option } = Select;
 
 const AddCategory = () => {
+  const [categoryForm] = Form.useForm();
+  const [attributeForm] = Form.useForm();
+  const [valueForm] = Form.useForm();
+
   const [categories, setCategories] = useState([]);
   const [attributes, setAttributes] = useState([]);
-  const [selectedAttributeId, setSelectedAttributeId] = useState(null);
 
-  // Fetch categories when page loads
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+
+  // Fetch categories on load
   const fetchCategories = async () => {
     try {
       const res = await axios.get(`${port}categories`);
@@ -22,16 +27,17 @@ const AddCategory = () => {
   };
 
   const fetchAttributes = async (categoryId) => {
+    setSelectedCategoryId(categoryId);
+
     try {
       const res = await axios.get(`${port}categories/${categoryId}/attributes`);
-      setAttributes(
-        Object.entries(res.data).map(([name, obj]) => ({
-          label: name,
-          id: obj.attribute_id,
-          values: obj.values,
-        }))
-      );
-    } catch (err) {
+      const mapped = Object.entries(res.data).map(([name, obj]) => ({
+        id: obj.attribute_id,
+        label: name,
+        values: obj.values || [],
+      }));
+      setAttributes(mapped);
+    } catch {
       message.error("Failed to fetch attributes.");
     }
   };
@@ -40,35 +46,34 @@ const AddCategory = () => {
     fetchCategories();
   }, []);
 
-  // -------------------- ADD CATEGORY --------------------
   const handleAddCategory = async (values) => {
     try {
       await axios.post(`${port}add-categories`, values);
       message.success("Category added!");
+      categoryForm.resetFields();
       fetchCategories();
     } catch {
       message.error("Failed to add category.");
     }
   };
 
-  // -------------------- ADD ATTRIBUTE --------------------
   const handleAddAttribute = async (values) => {
     try {
       await axios.post(`${port}add-attributes`, values);
       message.success("Attribute added!");
       fetchAttributes(values.category_id);
+      attributeForm.resetFields();
     } catch {
       message.error("Failed to add attribute.");
     }
   };
 
-  // -------------------- ADD ATTRIBUTE VALUE --------------------
   const handleAddValue = async (values) => {
     try {
       await axios.post(`${port}add-attribute-values`, values);
       message.success("Value added!");
-      fetchAttributes(values.attribute_id);
-      
+      fetchAttributes(selectedCategoryId);
+      valueForm.resetFields(["value"]);
     } catch {
       message.error("Failed to add value.");
     }
@@ -78,20 +83,28 @@ const AddCategory = () => {
     <div style={{ padding: 30 }}>
       <h2>⚙️ Add Category / Attributes / Values</h2>
 
-      {/* ADD CATEGORY FORM */}
-      <Form layout="inline" onFinish={handleAddCategory} style={{ marginBottom: 30 }}>
-        <Form.Item name="category_name" label="New Category" rules={[{ required: true }]}>
-          <Input placeholder="Ex: Wire Coils" />
+      {/* ADD CATEGORY */}
+      <Form form={categoryForm} layout="inline" onFinish={handleAddCategory} style={{ marginBottom: 30 }}>
+        <Form.Item name="category_name" rules={[{ required: true }]}>
+          <Input placeholder="New Category (e.g. Wire Coils)" />
         </Form.Item>
+
         <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
           Add Category
         </Button>
       </Form>
 
-      {/* ADD ATTRIBUTE FORM */}
-      <Form layout="inline" onFinish={handleAddAttribute} style={{ marginBottom: 30 }}>
-        <Form.Item name="category_id" rules={[{ required: true }]} label="Category">
-          <Select placeholder="Select Category" onChange={fetchAttributes} style={{ width: 200 }}>
+      {/* ADD ATTRIBUTE */}
+      <Form form={attributeForm} layout="inline" onFinish={handleAddAttribute} style={{ marginBottom: 30 }}>
+        <Form.Item name="category_id" rules={[{ required: true }]}>
+          <Select
+            placeholder="Select Category"
+            style={{ width: 200 }}
+            onChange={(catId) => {
+              fetchAttributes(catId);
+              valueForm.resetFields();
+            }}
+          >
             {categories.map((c) => (
               <Option key={c.category_id} value={c.category_id}>
                 {c.category_name}
@@ -100,8 +113,8 @@ const AddCategory = () => {
           </Select>
         </Form.Item>
 
-        <Form.Item name="attribute_name" rules={[{ required: true }]} label="Attribute Name">
-          <Input placeholder="Ex: Color" />
+        <Form.Item name="attribute_name" rules={[{ required: true }]}>
+          <Input placeholder="Attribute Name (e.g. Color)" />
         </Form.Item>
 
         <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
@@ -109,14 +122,10 @@ const AddCategory = () => {
         </Button>
       </Form>
 
-      {/* ADD ATTRIBUTE VALUE */}
-      <Form layout="inline" onFinish={handleAddValue}>
-        <Form.Item name="attribute_id" rules={[{ required: true }]} label="Attribute">
-          <Select
-            placeholder="Select Attribute"
-            onChange={(id) => setSelectedAttributeId(id)}
-            style={{ width: 200 }}
-          >
+      {/* ADD VALUE */}
+      <Form form={valueForm} layout="inline" onFinish={handleAddValue}>
+        <Form.Item name="attribute_id" rules={[{ required: true }]}>
+          <Select placeholder="Select Attribute" style={{ width: 200 }}>
             {attributes.map((a) => (
               <Option key={a.id} value={a.id}>
                 {a.label}
@@ -125,8 +134,8 @@ const AddCategory = () => {
           </Select>
         </Form.Item>
 
-        <Form.Item name="value" rules={[{ required: true }]} label="Value">
-          <Input placeholder="Ex: Red" />
+        <Form.Item name="value" rules={[{ required: true }]}>
+          <Input placeholder="Value (e.g. Red)" />
         </Form.Item>
 
         <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
@@ -134,7 +143,7 @@ const AddCategory = () => {
         </Button>
       </Form>
 
-      {/* Display current structure */}
+      {/* TABLE */}
       <h3 style={{ marginTop: 40 }}>📌 Current Structure</h3>
 
       <Table

@@ -1,190 +1,172 @@
-import React, { useState, useEffect } from "react";
-import { Table, DatePicker, Button, Spin, message, AutoComplete, Input } from "antd";
-import { UserOutlined } from "@ant-design/icons";
+import React, { useEffect, useState } from "react";
+import { Form, Select, Input, Button, DatePicker, Table, message } from "antd";
 import axios from "axios";
 import { port } from "./porturl";
-const { RangePicker } = DatePicker;
 
-const IssuePage = () => {
-  const [purchases, setPurchases] = useState([]); // Store purchases data
-  const [loading, setLoading] = useState(false); // Loading state
-  const [filters, setFilters] = useState({
-    date_from: null,
-    date_to: null,
-    supplier_id: null, // Supplier ID filter
-    bill_no: null, // Bill Number filter
-  });
-  const [billOptions, setBillOptions] = useState([]); // Options for Bill Number AutoComplete
-  const [supplierOptions, setSupplierOptions] = useState([]); // Options for Supplier ID AutoComplete
+const { Option } = Select;
 
-  // Fetch purchases from the backend
-  const fetchPurchases = async (applyFilters = false) => {
-    setLoading(true);
+export default function IssueItems() {
+  const [form] = Form.useForm();
+  const [categories, setCategories] = useState([]);
+  const [attributes, setAttributes] = useState({});
+  const [stock, setStock] = useState([]);
+  const [filteredStock, setFilteredStock] = useState([]);
+  const [cart, setCart] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+
+  // Load categories
+  useEffect(() => {
+    axios.get(`${port}categories`)
+      .then(res => setCategories(res.data))
+      .catch(() => message.error("Failed to load categories"));
+  }, []);
+
+  // Handle category change
+  const handleCategoryChange = async (_, option) => {
+    setSelectedCategory(option.key);
+
     try {
-      const params = {};
-      if (applyFilters) {
-        if (filters.date_from) {
-          params.date_from = filters.date_from.format("YYYY-MM-DD");
-        }
-        if (filters.date_to) {
-          params.date_to = filters.date_to.format("YYYY-MM-DD");
-        }
-        if (filters.supplier_id) {
-          params.supplier_id = filters.supplier_id;
-        }
-        if (filters.bill_no) {
-          params.bill_no = filters.bill_no;
-        }
-      }
+      const resAttr = await axios.get(`${port}categories/${option.key}/attributes`);
+      setAttributes(resAttr.data);
 
-      console.log("Fetching purchases with params:", params); // Debugging log
-      const response = await axios.get(`${port}purchaselist`, { params });
-      console.log("Response data:", response.data); // Debugging log
-      setPurchases(response.data);
-    } catch (error) {
-      console.error("Error fetching purchases:", error);
-      message.error("Failed to fetch purchases. Please try again later.");
+      const resStock = await axios.get(`${port}category-stock/${option.key}`);
+      setStock(resStock.data);
+      setFilteredStock(resStock.data);
+
+    } catch {
+      message.error("Error loading category details");
     }
-    setLoading(false);
   };
 
-  // Fetch all purchases on component mount
-  useEffect(() => {
-    console.log("PurchasesList component mounted"); // Debugging log
-    fetchPurchases(); // Fetch all purchases by default
-  }, []);
+  // Filter based on selected attributes
+  const handleFilter = (values) => {
+    let result = [...stock];
 
-  // Fetch bill numbers for AutoComplete
-  useEffect(() => {
-    const fetchBillNumbers = async () => {
-      try {
-        const response = await axios.get(`${port}bills`); // Replace with your bill endpoint
-        const options = response.data.map((bill) => ({
-          value: bill.bill_no.toString(),
-          label: `Bill No: ${bill.bill_no}`,
-        }));
-        setBillOptions(options);
-      } catch (error) {
-        console.error("Error fetching bill numbers:", error);
-        message.error("Failed to fetch bill numbers. Please try again later.");
+    Object.keys(values).forEach((k) => {
+      if (k.startsWith("attr_") && values[k]) {
+        result = result.filter(item => item.attributes.includes(values[k]));
       }
-    };
-
-    fetchBillNumbers();
-  }, []);
-
-  // Fetch supplier options for AutoComplete
-  useEffect(() => {
-    const fetchSuppliers = async () => {
-      try {
-        const response = await axios.get(`${port}suppliers`); // Replace with your supplier endpoint
-        const options = response.data.map((supplier) => ({
-          value: supplier.supplier_id.toString(),
-          label: `${supplier.supplier_id} - ${supplier.supplier_name}`,
-        }));
-        setSupplierOptions(options);
-      } catch (error) {
-        console.error("Error fetching suppliers:", error);
-        message.error("Failed to fetch suppliers. Please try again later.");
-      }
-    };
-
-    fetchSuppliers();
-  }, []);
-
-  // Handle filter changes
-  const handleFilterChange = (field, value) => {
-    setFilters((prev) => {
-      const updatedFilters = { ...prev, [field]: value };
-      console.log("Updated filters:", updatedFilters); // Debugging log
-      return updatedFilters;
     });
+
+    setFilteredStock(result);
   };
 
-  // Columns for the purchases table
+  const handleAddToCart = (values) => {
+    const selectedItem = filteredStock.find(i => i.item_id === values.item_id);
+
+    if (!selectedItem) return message.error("Invalid item selection");
+
+    if (values.quantity > selectedItem.available_qty) {
+      return message.error("Not enough stock available");
+    }
+
+    setCart([
+      ...cart,
+      {
+        item_id: selectedItem.item_id,
+        item_label: `${selectedItem.category_name} | ${selectedItem.attributes}`,
+        quantity: values.quantity,
+        issued_to: values.issued_to,
+        issued_by: values.issued_by,
+        issue_date: values.issue_date
+      }
+    ]);
+
+    message.success("Added to issue list");
+    form.resetFields(["quantity"]);
+  };
+
+  const submitIssue = async () => {
+    if (cart.length === 0) return message.error("Issue cart is empty!");
+
+    try {
+      await axios.post(`${port}issue-items`, { items: cart });
+      setCart([]);
+      form.resetFields();
+      message.success("Issued Successfully");
+    } catch {
+      message.error("Failed to submit issue");
+    }
+  };
+
   const columns = [
-    { title: "Purchase ID", dataIndex: "purchase_id", key: "purchase_id" },
-    { title: "Item Name", dataIndex: "item_name", key: "item_name" },
-    { title: "Quantity", dataIndex: "quantity", key: "quantity" },
-    { title: "Unit Price", dataIndex: "unit_price", key: "unit_price" },
-    { title: "Total Cost", dataIndex: "total_cost", key: "total_cost" },
-    { title: "Bill Number", dataIndex: "bill_no", key: "bill_no" },
-    { title: "Brand", dataIndex: "brand", key: "brand", render: (text) => text || "N/A" },
-    { title: "Units", dataIndex: "units", key: "units", render: (text) => text || "N/A" },
-    { title: "Domain", dataIndex: "domain", key: "domain", render: (text) => text || "N/A" },
-    { title: "Category", dataIndex: "category_name", key: "category_name", render: (text) => text || "N/A" },
-    { title: "Supplier ID", dataIndex: "supplier_id", key: "supplier_id" },
+    { title: "Item", dataIndex: "item_label" },
+    { title: "Qty", dataIndex: "quantity" },
+    { title: "Issued To", dataIndex: "issued_to" },
+    { title: "Issued By", dataIndex: "issued_by" },
+    { title: "Date", dataIndex: "issue_date", render: d => new Date(d).toLocaleDateString() },
     {
-      title: "Purchase Date",
-      dataIndex: "purchase_date",
-      key: "purchase_date",
-      render: (date) => new Date(date).toLocaleDateString(), // Format the date
-    },
-    {
-      title: "SED",
-      dataIndex: "SED",
-      key: "SED",
-      render: (date) => (date ? new Date(date).toLocaleDateString() : "N/A"),
-    },
-    { title: "SPN", dataIndex: "SPN", key: "SPN" },
-    { title: "Invoice", dataIndex: "invoice", key: "invoice" }, // ADDED INVOICE
+      title: "Remove",
+      render: (_, record) => (
+        <Button danger onClick={() => setCart(cart.filter(i => i !== record))}>
+          Delete
+        </Button>
+      )
+    }
   ];
 
   return (
     <div style={{ padding: 20 }}>
-      <h2>Purchases</h2>
+      <h2>📤 Issue Stock</h2>
 
-      {/* Filters */}
-      <div style={{ marginBottom: 20, display: "flex", gap: "10px", alignItems: "center" }}>
-        {/* Date Range Filter */}
-        <RangePicker
-          onChange={(dates) => {
-            handleFilterChange("date_from", dates ? dates[0] : null);
-            handleFilterChange("date_to", dates ? dates[1] : null);
-          }}
-          style={{ marginRight: 10 }}
-        />
+      <Form
+        form={form}
+        layout="vertical"
+        onValuesChange={handleFilter}
+        onFinish={handleAddToCart}
+      >
+        <Form.Item name="category" label="Category" rules={[{ required: true }]}>
+          <Select placeholder="Select Category" onChange={handleCategoryChange}>
+            {categories.map(c => (
+              <Option key={c.category_id} value={c.category_name}>{c.category_name}</Option>
+            ))}
+          </Select>
+        </Form.Item>
 
-        {/* Supplier ID Filter */}
-        <AutoComplete
-          options={supplierOptions}
-          style={{ width: 250 }}
-          placeholder="Filter by Supplier ID"
-          onChange={(value) => handleFilterChange("supplier_id", value)}
-          allowClear
-        >
-          <Input prefix={<UserOutlined />} />
-        </AutoComplete>
+        {Object.keys(attributes).map(attr => (
+          <Form.Item key={attr} name={`attr_${attr}`} label={attr}>
+            <Select>
+              {attributes[attr].values.map(v => (
+                <Option key={v.value_id} value={v.value}>{v.value}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+        ))}
 
-        {/* Bill Number Filter */}
-        <AutoComplete
-          options={billOptions}
-          style={{ width: 250 }}
-          placeholder="Filter by Bill Number"
-          onChange={(value) => handleFilterChange("bill_no", value)}
-          allowClear
-        >
-          <Input prefix={<UserOutlined />} />
-        </AutoComplete>
+        <Form.Item name="item_id" label="Available Items" rules={[{ required: true }]}>
+          <Select>
+            {filteredStock.map(item => (
+              <Option key={item.item_id} value={item.item_id}>
+                {item.attributes} (Available: {item.available_qty})
+              </Option>
+            ))}
+          </Select>
+        </Form.Item>
 
-        <Button type="primary" onClick={() => fetchPurchases(true)}>
-          Apply Filters
-        </Button>
-      </div>
+        <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
+          <Input type="number" min={1} />
+        </Form.Item>
 
-      {/* Purchases Table */}
-      {loading ? (
-        <Spin size="large" />
-      ) : (
-        <Table
-          dataSource={purchases}
-          columns={columns}
-          rowKey={(record) => record.purchase_id}
-          pagination={{ pageSize: 10 }}
-        />
-      )}
+        <Form.Item name="issued_to" label="Issued To" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
+
+        <Form.Item name="issued_by" label="Issued By" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
+
+        <Form.Item name="issue_date" label="Issue Date" rules={[{ required: true }]}>
+          <DatePicker style={{ width: "100%" }} />
+        </Form.Item>
+
+        <Button type="primary" htmlType="submit">Add to Issue Cart</Button>
+      </Form>
+
+      <Table dataSource={cart} columns={columns} style={{ marginTop: 20 }} rowKey={(r,i)=>i} />
+
+      <Button type="primary" disabled={!cart.length} onClick={submitIssue}>
+        Submit Issue
+      </Button>
     </div>
   );
-};
-
-export default IssuePage;
+}

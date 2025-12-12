@@ -14,6 +14,7 @@ import axios from "axios";
 import ItemsTable from "./ItemsTable";
 import AddUser from "./AddUser";
 import IssuedItemsTable from "./IssuedItems";
+import IssueItems from "./issue";
 import AddItems from "./AddItems";
 import Purchases from "./Purchases";
 import AddSupplier from "./AddSupplier";
@@ -53,6 +54,9 @@ const Dash = () => {
   };
 
   // Show Home page
+  const handleIssue=()=>{
+    setActivePage('issue');
+  }
   const handleAddCategory =() =>{
     setActivePage('addCategory')
   }
@@ -146,7 +150,7 @@ const Dash = () => {
           <Menu.Item
             key=""
             icon={<ContainerOutlined />}
-            onClick={handleShowAddItems}
+            onClick={handleIssue}
           >
             Issue
           </Menu.Item>
@@ -211,6 +215,8 @@ const Dash = () => {
           <AddUser />
         ) : activePage === "addCategory" ? (
           <AddCategory />
+        ) : activePage === "issue" ? (
+          <IssueItems />
         ) : activePage === "issuedItems" ? (
           <IssuedItemsTable />
         ) : activePage === "addItems" ? (

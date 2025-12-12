@@ -329,202 +329,182 @@ app.put("/items/:id", async (req, res) => {
 //         res.status(500).json({ error: "Server error" });
 //     }
 // });
-
-app.post("/purchases", async (req, res) => {
-  const { supplier_id, purchase_date, items } = req.body;
-
-  if (!items || items.length === 0) {
-    return res.status(400).json({ success: false, message: "Cart is empty" });
-  }
+app.post("/purchase", async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
 
   try {
-    // Generate a unique bill number
-    const [billResult] = await db.query("SELECT MAX(bill_no) AS lastBill FROM bill");
-    const bill_no = billResult[0].lastBill ? billResult[0].lastBill + 1 : 1000;
+    const { supplier_id, purchase_date, bill_number, items } = req.body;
 
-    // Insert a new record into the bill table
-    // Ensure purchase_date is in 'YYYY-MM-DD' format
-    await db.query(
-      "INSERT INTO bill (bill_no, invoice, purchase_date, supplier_id, created_at) VALUES (?, NULL, ?, ?, NOW())",
-      [bill_no, moment(purchase_date, 'DD-MM-YYYY').format('YYYY-MM-DD'), supplier_id]
+    // Insert purchase record
+    const [purchaseResult] = await conn.query(
+      `INSERT INTO purchases (supplier_id, purchase_date, bill_number) 
+       VALUES (?, ?, ?)`,
+      [supplier_id, purchase_date.split("T")[0], bill_number]
     );
 
-    console.log("Bill inserted successfully with bill_no:", bill_no);
+    const purchase_id = purchaseResult.insertId;
 
-    // Process each item in the cart
+    // Process each item in purchase
     for (const item of items) {
-      const {
-        item_name,
-        quantity,
-        unit_price,
-        expiry_date,
-        brand,
-        units,
-        domain,
-        category_name,
-        description,
-        SED,
-        SPN,
-        invoice,
-      } = item;
 
-      const total_cost = quantity * unit_price;
+      // Create readable item name using attributes
+      const attributeString = Object.entries(item.attributes)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" | ");
 
-      console.log("Processing item:", item);
+      const item_name = `${attributeString}`;
 
-      // Insert the item into the purchases table
-      await db.query(
-        "INSERT INTO purchases (item_name, supplier_id, purchase_date, quantity, unit_price, total_cost, expiry_date, bill_no, brand, units, domain, category_name, description, SED, SPN) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      // Insert purchased_items entry
+      const [itemRes] = await conn.query(
+        `INSERT INTO purchased_items 
+          (purchase_id, category_id, item_name, quantity, unit_price)
+         VALUES (?, ?, ?, ?, ?)`,
         [
+          purchase_id,
+          item.category_id,
           item_name,
-          supplier_id,
-          purchase_date,
-          quantity,
-          unit_price,
-          total_cost,
-          expiry_date,
-          bill_no,
-          brand,
-          units,
-          domain,
-          category_name,
-          description,
-          SED,
-          SPN,
-          invoice,
+          item.quantity,
+          item.unit_price
         ]
       );
 
-      console.log("Inserted item into purchases table:", item_name);
+      const purchased_item_id = itemRes.insertId;
 
-      // Always insert a new record into the items table
-      try {
-        console.log("Inserting item into items table:", {
-          item_name,
-          category_name,
-          brand,
-          supplier_id,
-          quantity,
-          units,
-          unit_price,
-          description,
-          domain,
-          expiry_date,
-          SED,
-          SPN,
-        });
-        await db.query(
-          "INSERT INTO items (name, category_name, brand, supplier_id, quantity, units, unit_price, description, domain, expiry_date, SED, SPN) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [
-            item_name,
-            category_name,
-            brand,
-            supplier_id,
-            quantity,
-            units,
-            unit_price,
-            description,
-            domain,
-            expiry_date,
-            SED,
-            SPN,
-          ]
+      // Store attributes in purchased_item_attributes
+      for (const [attrName, valueName] of Object.entries(item.attributes)) {
+        const [[attrRow]] = await conn.query(
+          `SELECT attribute_id FROM attributes WHERE attribute_name = ? LIMIT 1`,
+          [attrName]
         );
-        console.log("Inserted item into items table:", item_name);
-      } catch (error) {
-        console.error("Error inserting into items table:", error);
-        console.error("Error details:", error.message);
-        console.error("Error stack:", error.stack);
+
+        const [[valueRow]] = await conn.query(
+          `SELECT value_id FROM attribute_values WHERE value = ? AND attribute_id = ? LIMIT 1`,
+          [valueName, attrRow.attribute_id]
+        );
+
+        await conn.query(
+          `INSERT INTO purchased_item_attributes (item_id, attribute_id, value_id)
+           VALUES (?, ?, ?)`,
+          [purchased_item_id, attrRow.attribute_id, valueRow.value_id]
+        );
+      }
+
+      // -----------------------
+      // 🔥 Update Inventory Table
+      // -----------------------
+
+      // Check if item already exists
+      const [existing] = await conn.query(
+        `SELECT item_id FROM inventory_items 
+         WHERE category_id = ? AND attributes = ? LIMIT 1`,
+        [item.category_id, attributeString]
+      );
+
+      if (existing.length > 0) {
+        // If already exists → increase stock
+        await conn.query(
+          `UPDATE inventory_items 
+           SET purchased_qty = purchased_qty + ?
+           WHERE item_id = ?`,
+          [item.quantity, existing[0].item_id]
+        );
+      } else {
+        // If new item → insert
+        await conn.query(
+          `INSERT INTO inventory_items (category_id, category_name, attributes, purchased_qty)
+           VALUES (?, ?, ?, ?)`,
+          [item.category_id, item.category_name || "", attributeString, item.quantity]
+        );
       }
     }
 
-    res.json({ success: true, bill_no });
-  } catch (error) {
-    console.error("Error adding purchase:", error);
-    res.status(500).json({ success: false, message: "Database error." });
-  }
-});
+    await conn.commit();
+    res.json({ success: true, message: "Purchase Saved & Inventory Updated" });
 
-
-// ✅ Get Purchases
-app.get("/purchaselist", async (req, res) => {
-  const { date_from, date_to, supplier_id, domain, category_name, item_name, bill_no } = req.query;
-
-  let query = `
-    SELECT 
-      p.purchase_id,
-      p.item_name,
-      p.quantity,
-      p.unit_price,
-      p.total_cost,
-      b.bill_no, -- Ensure bill_no is selected from the bill table
-      p.brand,
-      p.units,
-      p.description,
-      p.domain,
-      p.category_name,
-      b.invoice,
-      b.purchase_date,
-      b.supplier_id,
-      p.SED,
-      p.SPN
-    FROM purchases p
-    JOIN bill b ON p.bill_no = b.bill_no
-    WHERE 1=1
-  `;
-  console.log("Query:", query); // Debugging log
-
-  const params = [];
-
-  if (date_from) {
-    query += ` AND DATE(b.purchase_date) >= ?`;
-    params.push(date_from);
-  }
-  if (date_to) {
-    query += ` AND DATE(b.purchase_date) <= ?`;
-    params.push(date_to);
-  }
-  if (supplier_id) {
-    query += ` AND b.supplier_id = ?`;
-    params.push(supplier_id);
-  }
-  if (domain) {
-    query += ` AND p.domain = ?`;
-    params.push(domain);
-  }
-  if (category_name) {
-    query += ` AND p.category_name LIKE ?`;
-    params.push(`%${category_name}%`);
-  }
-  if (item_name) {
-    query += ` AND p.item_name LIKE ?`;
-    params.push(`%${item_name}%`);
-  }
-  if (bill_no) {
-    query += ` AND b.bill_no = ?`;
-    params.push(bill_no);
-  }
-
-  try {
-    const [purchases] = await db.query(query, params);
-    console.log("Query Results:", purchases); // Debugging log 
-    console.log("Invoice Data:", purchases.map(row => row.invoice));
-    purchases.forEach((row) => {
-      if (row.invoice) {
-        row.invoice = row.invoice.toString("base64");
-      }
-    });
-    res.json(purchases);
   } catch (err) {
-    console.error("Error fetching purchases:", err);
-    res.status(500).json({ error: "Server error" });
+    await conn.rollback();
+    console.error("❌ Purchase Error:", err);
+    res.status(500).json({ success: false, message: "Purchase Failed" });
+  } finally {
+    conn.release();
   }
 });
+
+
+
+
+
+// GET /purchaselist
+app.get("/purchaselist", async (req, res) => {
+  try {
+    const { date_from, date_to, supplier_id, bill_no } = req.query;
+
+    let conditions = [];
+    let params = [];
+
+    if (date_from) {
+      conditions.push("p.purchase_date >= ?");
+      params.push(date_from);
+    }
+
+    if (date_to) {
+      conditions.push("p.purchase_date <= ?");
+      params.push(date_to);
+    }
+
+    if (supplier_id) {
+      conditions.push("p.supplier_id = ?");
+      params.push(supplier_id);
+    }
+
+    if (bill_no) {
+      conditions.push("p.bill_number = ?");
+      params.push(bill_no);
+    }
+
+    const whereSQL = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const query = `
+      SELECT 
+          p.purchase_id,
+          p.supplier_id,
+          p.bill_number,
+          p.purchase_date,
+          pi.item_id,
+          pi.item_name,
+          pi.quantity,
+          pi.unit_price,
+          pi.total_price,
+          c.category_name,
+          GROUP_CONCAT(CONCAT(a.attribute_name, ': ', av.value) SEPARATOR ', ') AS attributes
+      FROM purchases p
+      JOIN purchased_items pi ON p.purchase_id = pi.purchase_id
+      JOIN categories c ON pi.category_id = c.category_id
+      LEFT JOIN purchased_item_attributes pia ON pi.item_id = pia.item_id
+      LEFT JOIN attributes a ON pia.attribute_id = a.attribute_id
+      LEFT JOIN attribute_values av ON pia.value_id = av.value_id
+      ${whereSQL}
+      GROUP BY pi.item_id
+      ORDER BY p.purchase_date DESC, p.purchase_id DESC;
+    `;
+
+    const [rows] = await db.query(query, params);
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Server error fetching purchases list" });
+  }
+});
+
+
 
 app.get("/suppliers", async (req, res) => {
   try {
     // Fetch all suppliers from the database
-    const [suppliers] = await db.query("SELECT gstin, supplier_name FROM suppliers;");
+    const [suppliers] = await db.query("SELECT gstin, supplier_name , phone_number, contact_person, address FROM suppliers;");
     res.json(suppliers); // Return the list of suppliers
   } catch (err) {
     console.error("Error fetching suppliers:", err);
@@ -711,6 +691,7 @@ app.get("/categories/:categoryId/attributes", async (req, res) => {
       LEFT JOIN attribute_values av ON av.attribute_id = a.attribute_id
       WHERE a.category_id = ?
       ORDER BY a.attribute_name, av.value;
+      
     `;
 
     const [rows] = await db.query(query, [categoryId]);
@@ -853,3 +834,129 @@ app.post("/add-attribute-values", async (req, res) => {
     res.status(500).json({ message: "Error adding value" });
   }
 });
+
+app.get("/purchase-details/:purchaseId", async (req, res) => {
+  try {
+    const { purchaseId } = req.params;
+
+    const query = `
+      SELECT 
+        pi.item_id,
+        pi.item_name,
+        pi.quantity,
+        pi.unit_price,
+        pi.total_price,
+        c.category_name,
+        GROUP_CONCAT(CONCAT(a.attribute_name, ': ', av.value) SEPARATOR ', ') AS attributes
+      FROM purchased_items pi
+      JOIN categories c ON pi.category_id = c.category_id
+      LEFT JOIN purchased_item_attributes pia ON pi.item_id = pia.item_id
+      LEFT JOIN attributes a ON pia.attribute_id = a.attribute_id
+      LEFT JOIN attribute_values av ON pia.value_id = av.value_id
+      WHERE pi.purchase_id = ?
+      GROUP BY pi.item_id;
+    `;
+
+    const [items] = await db.query(query, [purchaseId]);
+
+    const invoiceTotal = items.reduce((sum, i) => sum + Number(i.total_price), 0);
+
+    res.json({ items, invoiceTotal });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error fetching invoice details" });
+  }
+});
+
+
+app.get("/purchase-invoices", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        p.purchase_id,
+        p.bill_number,
+        p.supplier_id,
+        s.supplier_name,
+        DATE_FORMAT(p.purchase_date, '%Y-%m-%d') as purchase_date,
+        SUM(pi.total_price) as invoice_total
+      FROM purchases p
+      JOIN purchased_items pi ON p.purchase_id = pi.purchase_id
+      JOIN suppliers s ON p.supplier_id = s.gstin
+      GROUP BY p.purchase_id
+      ORDER BY p.purchase_date DESC;
+    `;
+
+    const [rows] = await db.query(query);
+    res.json(rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error fetching invoice list" });
+  }
+});
+
+app.get("/category-stock/:categoryId", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        ii.item_id,
+        ii.category_name,
+        ii.attributes,
+        ii.available_qty
+      FROM inventory_items ii
+      WHERE ii.category_id = ? AND ii.available_qty > 0
+    `;
+
+    const [rows] = await db.query(query, [req.params.categoryId]);
+    res.json(rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch inventory." });
+  }
+});
+
+app.post("/issue-items", async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    const { items } = req.body;
+
+    for (const item of items) {
+
+      // Insert issue record
+      await conn.query(
+        `INSERT INTO issued_items (inventory_item_id, quantity, issued_to, issued_by, issue_date)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          item.item_id, 
+          item.quantity,
+          item.issued_to,
+          item.issued_by,
+          item.issue_date.split("T")[0]
+        ]
+      );
+
+      // 🔥 Reduce inventory
+      await conn.query(
+        `UPDATE inventory_items 
+         SET issued_qty = issued_qty + ?
+         WHERE item_id = ?`,
+        [item.quantity, item.item_id]
+      );
+    }
+
+    await conn.commit();
+    res.json({ success: true, message: "Items issued successfully!" });
+
+  } catch (err) {
+    await conn.rollback();
+    console.log(err);
+    res.status(500).json({ success: false, message: "Issuing failed" });
+  } finally {
+    conn.release();
+  }
+});
+

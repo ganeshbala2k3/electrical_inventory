@@ -15,6 +15,8 @@ import Staffdash from "./components/staff/staffdash";
 import IssuerDash from "./components/issuer/IssuerDash";
 import ManagerDash from "./components/manager/ManagerDash";
 import AddCategory from './components/categoryadd';
+import IssueItems from './components/issue';
+
 
 function App() {
   const userRole = localStorage.getItem('role');
@@ -35,6 +37,9 @@ function App() {
         <Route path="/staffdash" element={<Staffdash />} />
         <Route path="/issuerdash" element={<IssuerDash />} />
         <Route path="/managerdash/*" element={<ManagerDash />} />
+        <Route path="/issue" element={<IssueItems />} />
+
+
       </Routes>
     </Router>
   );
