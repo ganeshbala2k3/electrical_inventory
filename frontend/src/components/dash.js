@@ -37,6 +37,9 @@ const Dash = () => {
   const [loading, setLoading] = useState(false);
   const [activePage, setActivePage] = useState("home");
   const navigate = useNavigate();
+    const ROLES_WITH_FULL_ACCESS = ["Admin"];
+  const role = localStorage.getItem("user_role");
+  const hasFullAccess = ROLES_WITH_FULL_ACCESS.includes(role);
 
   // Fetch items based on the selected category
   const fetchItems = async (category) => {
@@ -166,13 +169,13 @@ const handleLogout = async () => {
             Users
           </Menu.Item>
 
-          <Menu.Item
-            key=""
+          {hasFullAccess && (<Menu.Item
+            key="issue"
             icon={<ContainerOutlined />}
             onClick={handleIssue}
           >
             Issue
-          </Menu.Item>
+          </Menu.Item>)}
          
 
 

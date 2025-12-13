@@ -2,10 +2,14 @@ import React, { useEffect, useState } from "react";
 import { Table, message } from "antd";
 import axios from "axios";
 import { port } from "./porturl";
+import dayjs from "dayjs";
+
 
 export default function ViewIssuedItems() {
   const [issuedItems, setIssuedItems] = useState([]);
   const [loading, setLoading] = useState(false);
+
+
 
   // -----------------------
   // LOAD ISSUED ITEMS
@@ -36,7 +40,7 @@ export default function ViewIssuedItems() {
       title: "Issue Date", 
       dataIndex: "issue_date", 
       key: "issue_date",
-      render: d => new Date(d).toLocaleDateString()
+      render: d => dayjs(d).format("DD-MM-YYYY")
     },
         { title: "Item Details", dataIndex: "attributes", key: "attributes" },
 

@@ -20,7 +20,6 @@ import Recipients from './components/Recipients';
 import ProtectedRoute from './routewrapper';
 
 function App() {
-  const userRole = localStorage.getItem('role');
 
   return (
     <Router>
@@ -35,7 +34,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/add-user" element={<AddUser />} />
+        <Route path="/add-user"  element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <AddUser/>
+            </ProtectedRoute>
+          } />
         <Route path="/content" element={<ContentSection />} />
         <Route path="/issueditems" element={<IssuedItems />} />
         <Route path="/users" element={<Users />} />

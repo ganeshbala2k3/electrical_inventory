@@ -22,6 +22,7 @@ const Login = () => {
       const role = res.data.user.role;
 
       localStorage.setItem("user_id", res.data.user.id);
+      localStorage.setItem("user_name",res.data.user.username)
       localStorage.setItem("user_role",res.data.user.role);
       localStorage.setItem("login_time", new Date().toISOString()); // Store login time
       alert(`Hello ${role.toUpperCase()}, successfully logged in!`);

@@ -957,6 +957,7 @@ app.post("/issue-items", async (req, res) => {
     for (const item of items) {
 
       // Insert issue record
+      console.log(item.issued_by);
       await conn.query(
         `INSERT INTO issued_items (inventory_item_id, quantity, issued_to, issued_by, issue_date, allotment_id)
          VALUES (?, ?, ?, ?, ?,?)`,
