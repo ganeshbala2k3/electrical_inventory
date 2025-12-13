@@ -17,7 +17,7 @@ import ManagerDash from "./components/manager/ManagerDash";
 import AddCategory from './components/categoryadd';
 import IssueItems from './components/issue';
 import Recipients from './components/Recipients';
-
+import ProtectedRoute from './routewrapper';
 
 function App() {
   const userRole = localStorage.getItem('role');
@@ -27,7 +27,14 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/addItems" element={<AddItems />} />
-        <Route path="/dash" element={<Dash />} />
+         <Route
+          path="/dash"
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <Dash/>
+            </ProtectedRoute>
+          }
+        />
         <Route path="/add-user" element={<AddUser />} />
         <Route path="/content" element={<ContentSection />} />
         <Route path="/issueditems" element={<IssuedItems />} />

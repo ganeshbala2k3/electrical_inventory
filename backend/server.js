@@ -1,57 +1,75 @@
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const mysql = require("mysql2");
-const moment = require("moment");
-require("dotenv").config();
-
+import express from "express";
+import cors from "cors";
+import bodyParser from "body-parser";
+import mysql from "mysql2/promise";
+import session from "express-session";
+import dotenv from "dotenv";
+import { requireRole } from "./middleware/auth.js";
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = 4000;
 
+// ✅ CORS — MUST COME BEFORE SESSION
+app.use(cors({
+  origin: "http://localhost:3000",
+  credentials: true
+}));
 
-// ✅ Database Connection
-const db = mysql.createPool({
+app.use(bodyParser.json());
+
+// ✅ SESSION
+app.use(
+  session({
+    name: "inventory.sid",
+    secret: "inventory_secret_key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      maxAge: 1000 * 60 * 60
+    }
+  })
+);
+
+// DB
+const db = await mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-}).promise();
+});
 
-app.use(cors());
-app.use(bodyParser.json());
-
-// ✅ Login Route
+// ✅ LOGIN
 app.post("/login", async (req, res) => {
-    try {
-      const { email, password, role } = req.body;
-  
-      // Validate input
-      if (!email || !password || !role) {
-        return res.status(400).json({ success: false, message: "All fields are required" });
-      }
-  
-      // Fetch user from the database
-      const sql = `SELECT * FROM users WHERE email = ? AND role = ? AND password_hash = ?`;
-      const [data] = await db.query(sql, [email, role, password]);
-  
-      if (data.length === 0) {
-        return res.status(401).json({ success: false, message: "Invalid credentials" });
-      }
-  
-      const user = data[0];
+  const { email, password } = req.body;
 
-  
-      // If password is valid, return success response
-      res.json({ success: true, user: { id: user.user_id, username: user.username, role: user.role } });
-    } catch (err) {
-      console.error("Error:", err);
-      res.status(500).json({ success: false, message: "Server error" });
-    }
+  const [rows] = await db.query(
+    `SELECT user_id, username, role 
+     FROM users 
+     WHERE email = ? AND password_hash = ?`,
+    [email, password]
+  );
+
+  if (!rows.length) {
+    return res.status(401).json({ success: false, message: "Invalid credentials" });
+  }
+
+  const user = rows[0];
+
+  req.session.user = {
+    id: user.user_id,
+    username: user.username,
+    role: user.role
+  };
+
+  res.json({
+    success: true,
+    user: req.session.user
   });
+});
+
 
 // ✅ Add Item
 app.post("/addItem", async (req, res) => {
@@ -319,7 +337,7 @@ app.put("/items/:id", async (req, res) => {
   
   
   
-app.get("/issued-items", async (req, res) => {
+app.get("/issued-items" ,async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT ii.issue_date, ii.id, ii.inventory_item_id, ii.quantity, ii.issued_to, ii.issued_by,
@@ -328,7 +346,6 @@ app.get("/issued-items", async (req, res) => {
       LEFT JOIN inventory_items inv ON ii.inventory_item_id = inv.item_id
       ORDER BY ii.issue_date DESC
     `);
-    console.log("helloooo");
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -591,6 +608,8 @@ app.get("/user/:id", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+
 
 app.delete("/deletesupplier/:gstin", async (req, res) => {
   try {
@@ -973,7 +992,7 @@ app.post("/issue-items", async (req, res) => {
   }
 });
 
-app.post("/recipients", async (req, res) => {
+app.post("/recipients", requireRole(["Staff"]), async (req, res) => {
   try {
     const { recipient_name, department, phone, email } = req.body;
     console.log(req.body);
@@ -990,7 +1009,8 @@ app.post("/recipients", async (req, res) => {
   }
 });
 
-app.get("/recipients", async (req, res) => {
+app.get("/recipients",
+ async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM recipients ORDER BY recipient_id DESC");
     res.json(rows);
@@ -1012,3 +1032,15 @@ app.delete("/recipients/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete recipient" });
   }
 });
+
+app.post("/logout", (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      return res.status(500).json({ success: false, message: "Logout failed" });
+    }
+
+    res.clearCookie("inventory.sid");
+    res.json({ success: true, message: "Logged out" });
+  });
+});
+

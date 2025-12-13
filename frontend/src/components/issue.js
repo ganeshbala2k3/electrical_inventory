@@ -169,7 +169,7 @@ export default function IssueItems() {
       <Form
         form={form}
         layout="vertical"
-        onValuesChange={handleFilter}
+        onValuesChange={(_, allValues) => handleFilter(allValues)}
         onFinish={handleAddToCart}
       >
 

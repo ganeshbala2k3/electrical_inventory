@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Menu, Spin, message } from "antd";
+import { useNavigate } from "react-router-dom";
+
 import {
   AppstoreOutlined,
   HomeOutlined,
@@ -26,12 +28,15 @@ import AddCategory from "./categoryadd";
 import { port } from "./porturl";
 import Recipients from "./Recipients";
 
+  
+
 
 const Dash = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [itemsData, setItemsData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activePage, setActivePage] = useState("home");
+  const navigate = useNavigate();
 
   // Fetch items based on the selected category
   const fetchItems = async (category) => {
@@ -105,10 +110,19 @@ const Dash = () => {
   };
 
   // Logout function
-  const handleLogout = () => {
-    localStorage.clear(); // Clear user session data
-    window.location.href = "/"; // Redirect to the login page
-  };
+const handleLogout = async () => {
+  try {
+    await axios.post(`${port}logout`, {}, { withCredentials: true });
+    localStorage.clear();
+    alert('Session Cleared Loggedout!!');
+    navigate("/");
+    
+  } catch {
+    console.log("Logout API failed");
+  }
+
+};
+
 
   // Show Profile page
   const handleShowProfile = () => {
