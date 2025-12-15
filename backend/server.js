@@ -337,21 +337,35 @@ app.put("/items/:id", async (req, res) => {
   
   
   
-app.get("/issued-items" ,async (req, res) => {
+app.get("/issued-items", async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT ii.issue_date, ii.id, ii.inventory_item_id, ii.quantity, ii.issued_to, ii.issued_by,
-             ii.allotment_id, inv.attributes
+      SELECT 
+        ii.id,
+        DATE_FORMAT(ii.issue_date, '%Y-%m-%d') AS issue_date,
+        ii.inventory_item_id,
+        ii.quantity,
+        ii.issued_to,
+        ii.issued_by,
+        ii.allotment_id,
+        inv.attributes
       FROM issued_items ii
-      LEFT JOIN inventory_items inv ON ii.inventory_item_id = inv.item_id
+      LEFT JOIN inventory_items inv 
+        ON ii.inventory_item_id = inv.item_id
       ORDER BY ii.issue_date DESC
     `);
+
     res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Failed to fetch issued items" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch issued items"
+    });
   }
 });
+
+
 
 
 app.post("/purchase", async (req, res) => {
@@ -993,7 +1007,7 @@ app.post("/issue-items", async (req, res) => {
   }
 });
 
-app.post("/recipients", requireRole(["Staff"]), async (req, res) => {
+app.post("/recipients",async (req, res) => {
   try {
     const { recipient_name, department, phone, email } = req.body;
     console.log(req.body);
