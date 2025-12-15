@@ -1059,7 +1059,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-router.get("/category-stock/:categoryId", async (req, res) => {
+app.get("/category-stock/:categoryId", async (req, res) => {
   const { categoryId } = req.params;
 
   const [rows] = await db.query(`
