@@ -336,7 +336,8 @@ app.put("/items/:id", async (req, res) => {
   });
   
   
-  
+// ✅ Corrected app.get("/issued-items") route
+
 app.get("/issued-items", async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -348,10 +349,15 @@ app.get("/issued-items", async (req, res) => {
         ii.issued_to,
         ii.issued_by,
         ii.allotment_id,
-        inv.attributes
+        ii.quantity_returned,                           -- Added for completeness
+        (ii.quantity - ii.quantity_returned) AS outstanding_qty, -- Added for completeness
+        inv.attributes,
+        r.department                                    -- 🔥 NEW: Fetch recipient department
       FROM issued_items ii
       LEFT JOIN inventory_items inv 
         ON ii.inventory_item_id = inv.item_id
+      LEFT JOIN recipients r                            -- 🔥 NEW: Join recipients table
+        ON ii.issued_to = r.recipient_name              -- 🔥 NEW: Join condition (assuming issued_to stores the name)
       ORDER BY ii.issue_date DESC
     `);
 
@@ -397,14 +403,15 @@ app.post("/purchase", async (req, res) => {
       // Insert purchased_items entry
       const [itemRes] = await conn.query(
         `INSERT INTO purchased_items 
-          (purchase_id, category_id, item_name, quantity, unit_price,quantity_type)
-         VALUES (?, ?, ?, ?, ?,?)`,
+          (purchase_id, category_id, item_name, quantity, unit_price,gst_amount,quantity_type)
+         VALUES (?, ?, ?, ?, ?,?,?)`,
         [
           purchase_id,
           item.category_id,
           item_name,
           item.quantity,
           item.unit_price,
+          item.gst_amount,
           item.quantity_type
         ]
       );
@@ -1059,22 +1066,126 @@ app.post("/logout", (req, res) => {
   });
 });
 
-router.get("/category-stock/:categoryId", async (req, res) => {
-  const { categoryId } = req.params;
+// ... existing imports and app setup ...
 
-  const [rows] = await db.query(`
-    SELECT 
-      i.item_id,
-      c.category_name,
-      i.available_qty,
-      GROUP_CONCAT(av.value SEPARATOR ' | ') AS attributes
-    FROM items i
-    JOIN categories c ON c.category_id = i.category_id
-    JOIN item_attributes ia ON ia.item_id = i.item_id
-    JOIN attribute_values av ON av.value_id = ia.attribute_value_id
-    WHERE i.category_id = ?
-    GROUP BY i.item_id
-  `, [categoryId]);
+// ... existing routes (login, addItem, categories, items, etc.) ...
 
-  res.json(rows);
+// ... existing app.get("/issued-items") route ...
+
+// ... existing app.post("/purchase") route ...
+
+// ... existing app.get("/suppliers"), app.post("/addSupplier"), etc. ...
+
+// ... existing app.post("/issue-items") route ...
+
+// ----------------------------------------------------------------------
+// ✅ 1. GET /issued-items-by-allotment/:allotmentId (Corrected Logic)
+// ----------------------------------------------------------------------
+app.get('/issued-items-by-allotment/:allotmentId', async (req, res) => {
+    const { allotmentId } = req.params;
+
+    const query = `
+        SELECT
+            ii.id AS issued_item_id,                             -- PK of issued_items (Used for update later)
+            ii.inventory_item_id AS item_id,                    -- FK to inventory_items
+            ii.quantity AS issued_qty,                          -- Original issued quantity
+            ii.quantity_returned AS returned_so_far,            -- Quantity already returned (must be <= issued_qty)
+            ii.issued_to,
+            ii.issue_date,
+            inv.attributes AS item_label,
+            (ii.quantity - ii.quantity_returned) AS remaining_qty_to_return -- Calculated outstanding quantity
+        FROM issued_items ii
+        JOIN inventory_items inv ON ii.inventory_item_id = inv.item_id
+        WHERE ii.allotment_id = ?
+          AND (ii.quantity - ii.quantity_returned) > 0; -- Only items that still have an outstanding balance
+    `;
+
+    try {
+        const [rows] = await db.query(query, [allotmentId]);
+
+        if (rows.length === 0) {
+            return res.json({
+                issued_to: '',
+                issue_date: '',
+                items: []
+            });
+        }
+        
+        // Group the essential info from the first row (assuming allotment details are consistent)
+        const allotmentInfo = {
+            issued_to: rows[0].issued_to,
+            issue_date: rows[0].issue_date,
+            items: rows.map(row => ({
+                issued_item_id: row.issued_item_id,
+                item_id: row.item_id,
+                item_label: row.item_label,
+                quantity: row.issued_qty, // Original issued quantity
+                remaining_qty_to_return: row.remaining_qty_to_return
+            }))
+        };
+
+        res.json(allotmentInfo);
+
+    } catch (error) {
+        console.error("❌ Error fetching issued items by allotment:", error);
+        res.status(500).json({ success: false, message: "Database error fetching issued items." });
+    }
 });
+
+
+// ----------------------------------------------------------------------
+// ✅ 2. POST /return-items (Corrected Logic)
+// ----------------------------------------------------------------------
+app.post('/return-items', async (req, res) => {
+    const { allotment_id, returned_by, return_date, returned_items } = req.body;
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+
+    try {
+        for (const item of returned_items) {
+            
+            // --- A. Insert into returned_items table (Audit Log) ---
+            // NOTE: Need to verify if 'returned_items' table exists and has columns matching the INSERT
+            const insertReturnSql = `
+                INSERT INTO returned_items (issued_item_id, item_id, quantity, return_date, returned_by)
+                VALUES (?, ?, ?, ?, ?)
+            `;
+            await conn.query(insertReturnSql, [
+                item.issued_item_id, // This is issued_items.id
+                item.item_id,        // This is inventory_items.item_id
+                item.quantity,       // Quantity being returned
+                return_date,
+                returned_by
+            ]);
+
+            // --- B. Update issued_items: INCREMENT quantity_returned ---
+            const updateIssuedSql = `
+                UPDATE issued_items 
+                SET quantity_returned = quantity_returned + ? 
+                WHERE id = ?
+            `;
+            await conn.query(updateIssuedSql, [item.quantity, item.issued_item_id]);
+
+            // --- C. Update inventory_items: DECREMENT issued_qty (Restock) ---
+            // Decrementing issued_qty automatically INCREMENTS available_qty (since it is GENERATED ALWAYS AS (purchased_qty - issued_qty))
+            const stockRestockSql = `
+                UPDATE inventory_items 
+                SET issued_qty = issued_qty - ? 
+                WHERE item_id = ?
+            `;
+            await conn.query(stockRestockSql, [item.quantity, item.item_id]);
+        }
+
+        await conn.commit();
+        res.status(201).json({ success: true, message: 'Items returned and restocked successfully.' });
+
+    } catch (error) {
+        await conn.rollback();
+        console.error("❌ Return Transaction Error:", error);
+        res.status(500).json({ success: false, message: 'Return failed due to a database error.' });
+    } finally {
+        conn.release();
+    }
+});
+
+// ... existing app.get("/category-stock/:categoryId") (bottom of the file) ...

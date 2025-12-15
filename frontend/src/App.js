@@ -19,6 +19,7 @@ import IssueItems from './components/issue';
 import Recipients from './components/Recipients';
 import ProtectedRoute from './routewrapper';
 import ViewStock from './components/viewStock';
+import ReturnItems from './components/returnstock';
 
 function App() {
 
@@ -77,7 +78,13 @@ function App() {
               <ViewStock/>
             </ProtectedRoute>
           } />
+         <Route path="/returnstock"  element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <ReturnItems/>
+            </ProtectedRoute>
+          } />
 
+          
 
 
         

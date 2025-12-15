@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from "react";
-import { Form, Input, Button, Table, message } from "antd";
+import React, { useState, useEffect, useMemo } from "react";
+import { Form, Input, Button, Table, message, Row, Col } from "antd";
+import { SearchOutlined, UserAddOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { port } from "./porturl";
+
+const { Search } = Input;
 
 export default function Recipients() {
   const [form] = Form.useForm();
   const [recipients, setRecipients] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(''); 
 
   useEffect(() => {
     loadRecipients();
@@ -13,11 +18,14 @@ export default function Recipients() {
 
   // Load all recipients
   const loadRecipients = async () => {
+    setLoading(true);
     try {
       const res = await axios.get(`${port}recipients`);
       setRecipients(res.data);
     } catch (err) {
       message.error("Failed to load recipients");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -29,38 +37,35 @@ export default function Recipients() {
       form.resetFields();
       loadRecipients();
     } catch (err) {
+      console.error("Error adding recipient:", err);
       message.error("Failed to add recipient");
     }
   };
 
-  // Delete recipient
-  const deleteRecipient = async (id) => {
-    try {
-      await axios.delete(`${port}recipients/${id}`);
-      message.success("Recipient deleted");
-      loadRecipients();
-    } catch (err) {
-      message.error("Failed to delete recipient");
-    }
-  };
+  // 🔥 REMOVED: deleteRecipient function is removed
 
-  // Table columns
+  // Filtering recipients based on search term
+  const filteredRecipients = useMemo(() => {
+    if (!searchTerm) {
+      return recipients;
+    }
+    const lowerCaseSearch = searchTerm.toLowerCase();
+
+    return recipients.filter(r =>
+      r.recipient_name?.toLowerCase().includes(lowerCaseSearch) ||
+      r.department?.toLowerCase().includes(lowerCaseSearch) ||
+      r.phone?.toLowerCase().includes(lowerCaseSearch) ||
+      r.email?.toLowerCase().includes(lowerCaseSearch)
+    );
+  }, [recipients, searchTerm]);
+
+
+  // Table columns (🔥 REMOVED: Actions column)
   const columns = [
-    { title: "Recipient Name", dataIndex: "recipient_name" },
+    { title: "Recipient Name", dataIndex: "recipient_name", sorter: (a, b) => a.recipient_name.localeCompare(b.recipient_name) },
     { title: "Department", dataIndex: "department" },
     { title: "Phone", dataIndex: "phone" },
     { title: "Email", dataIndex: "email" },
-    {
-      title: "Actions",
-      render: (record) => (
-        <Button
-          danger
-          onClick={() => deleteRecipient(record.recipient_id)}
-        >
-          Delete
-        </Button>
-      ),
-    },
   ];
 
   return (
@@ -97,17 +102,35 @@ export default function Recipients() {
           <Input placeholder="Enter Email" />
         </Form.Item>
 
-        <Button type="primary" htmlType="submit">
+        <Button type="primary" htmlType="submit" icon={<UserAddOutlined />}>
           Save Recipient
         </Button>
       </Form>
 
       <h2 style={{ marginTop: 30 }}>📋 Recipient List</h2>
+      
+      {/* Search Input */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={8}>
+          <Search
+            placeholder="Search by Name, Dept, or Email"
+            allowClear
+            enterButton={<SearchOutlined />}
+            onSearch={setSearchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: '100%' }}
+          />
+        </Col>
+        <Col span={16} />
+      </Row>
+
 
       <Table
-        dataSource={recipients}
+        dataSource={filteredRecipients}
         columns={columns}
         rowKey="recipient_id"
+        loading={loading}
+        pagination={{ pageSize: 10 }}
       />
     </div>
   );

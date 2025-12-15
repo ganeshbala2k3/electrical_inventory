@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Menu, Spin, message } from "antd";
+import { Menu, Spin, message, Button } from "antd";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -7,12 +7,15 @@ import {
   HomeOutlined,
   LogoutOutlined,
   UserOutlined,
-  UsergroupAddOutlined,
   DeliveredProcedureOutlined,
   ContainerOutlined,
-  FontSizeOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  // Imported Icons
 } from "@ant-design/icons";
 import axios from "axios";
+
+// Import all necessary components (List remains unchanged)
 import ItemsTable from "./ItemsTable";
 import AddUser from "./AddUser";
 import IssuedItemsTable from "./IssuedItems";
@@ -28,139 +31,159 @@ import AddCategory from "./categoryadd";
 import { port } from "./porturl";
 import Recipients from "./Recipients";
 import ViewStock from "./viewStock";
-
-  
-
+import ReturnItems from "./returnstock";
 
 const Dash = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [itemsData, setItemsData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activePage, setActivePage] = useState("home");
+  const [collapsed, setCollapsed] = useState(false); 
+  
   const navigate = useNavigate();
-    const AdminAccess = ["Admin"];
-    const ManagerAccess=["Manager","Admin"];
-    const StaffAccess=["Staff","Admin","Manager"];
+  
+  // User Role Logic (Retained)
+  const AdminAccess = ["Admin"];
+  const ManagerAccess=["Manager","Admin"];
+  const StaffAccess=["Staff","Admin","Manager"];
   const role = localStorage.getItem("user_role");
   const hasAdmin = AdminAccess.includes(role);
   const hasManager = ManagerAccess.includes(role);
   const hasStaff = StaffAccess.includes(role);
 
+  const toggleCollapsed = () => {
+    setCollapsed(!collapsed);
+  };
 
-  // Fetch items based on the selected category
+  // --- Helper Functions (Navigation handlers remain unchanged) ---
   const fetchItems = async (category) => {
     setLoading(true);
     try {
       const response = await axios.get(`${port}items/${category}`);
       setItemsData(response.data);
-      console.log("Fetched items:", response.data);
     } catch (error) {
-      console.error("Error fetching data:", error);
-      message.error("Failed to fetch items. Please try again later.");
+      message.error("Failed to fetch items.");
     }
     setLoading(false);
   };
 
-  // Handle category selection
   const handleClick = (e) => {
     setSelectedCategory(e.key);
     fetchItems(e.key);
-    setActivePage(null); // Reset active page
+    setActivePage(null); 
   };
 
-  // Show Home page
-  const handleViewStock=()=>{
-    setActivePage('viewstock');
-  }
-  const handleIssue=()=>{
-    setActivePage('issue');
-  }
-  const handleAddCategory =() =>{
-    setActivePage('addCategory')
-  }
-  const handleShowHome = () => {
-    setActivePage("home");
+  const handleReturnStock = () => setActivePage('returnstock');
+  const handleViewStock = () => setActivePage('viewstock');
+  const handleIssue = () => setActivePage('issue');
+  const handleAddCategory = () => setActivePage('addCategory');
+  const handleShowHome = () => setActivePage("home");
+  const handleShowIssuedItems = () => setActivePage("issuedItems");
+  const handleShowAddUser = () => setActivePage("addUser"); // Not directly used in menu structure now, but kept
+  const handleShowAddItems = () => setActivePage("addItems"); // Not directly used in menu structure now, but kept
+  const handleShowPurchases = () => setActivePage("purchases");
+  const handleAddRecipient = () => setActivePage("addrec");
+  const handleShowAddSupplier = () => setActivePage("addSupplier");
+  const handleShowPurchasesList = () => setActivePage("purchasesList");
+  const handleShowUsers = () => setActivePage("users");
+  const handleShowProfile = () => setActivePage("profile");
+
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${port}logout`, {}, { withCredentials: true });
+      localStorage.clear();
+      alert('Session Cleared Logged out!!');
+      navigate("/");
+    } catch {
+      console.log("Logout API failed");
+    }
   };
 
-  // Show Issued Items page
-  const handleShowIssuedItems = () => {
-    setActivePage("issuedItems");
-  };
 
-  // Show Add User page
-  const handleShowAddUser = () => {
-    setActivePage("addUser");
-  };
-
-  // Show Add Items page
-  const handleShowAddItems = () => {
-    setActivePage("addItems");
-  };
-
-  // Show Purchases page
-  const handleShowPurchases = () => {
-    setActivePage("purchases");
-  };
-
-  const handleAddRecipient =()=>{
-    setActivePage("addrec")
-  }
-
-  // Show Add Supplier page
-  const handleShowAddSupplier = () => {
-    setActivePage("addSupplier");
-  };
-
-  // Show Purchases List page
-  const handleShowPurchasesList = () => {
-    setActivePage("purchasesList");
-  };
-
-  // Show Users page
-  const handleShowUsers = () => {
-    setActivePage("users");
-  };
-
-  // Logout function
-const handleLogout = async () => {
-  try {
-    await axios.post(`${port}logout`, {}, { withCredentials: true });
-    localStorage.clear();
-    alert('Session Cleared Loggedout!!');
-    navigate("/");
+  // --- Render Content (Unchanged) ---
+  const renderContent = () => {
+    if (loading) return <Spin size="large" />;
     
-  } catch {
-    console.log("Logout API failed");
-  }
-
-};
-
-
-  // Show Profile page
-  const handleShowProfile = () => {
-    setActivePage("profile");
+    switch (activePage) {
+      case "home":
+        return <Home />;
+      case "viewstock":
+        return <ViewStock />;
+      case "returnstock":
+        return <ReturnItems />;
+      case "addUser":
+        return <AddUser />;
+      case "addCategory":
+        return <AddCategory />;
+      case "issue":
+        return <IssueItems />;
+      case "issuedItems":
+        return <IssuedItemsTable />;
+      case "addItems":
+        return <AddItems />;
+      case "purchases":
+        return <Purchases />;
+      case "addrec":
+        return <Recipients />;
+      case "purchasesList":
+        return <PurchasesList />;
+      case "addSupplier":
+        return <AddSupplier />;
+      case "users":
+        return <Users />;
+      case "profile":
+        return <Profile />;
+      default:
+        if (selectedCategory && itemsData.length > 0) {
+          return <ItemsTable itemsData={itemsData} setItemsData={setItemsData} />;
+        }
+        return <h2>No items found for this category or page not selected.</h2>;
+    }
   };
+
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       {/* Sidebar */}
-      <div style={{ width: 256, background: "#f0f2f5", padding: 10, overflowY:"auto",maxHeight:"100vh", }}>
-        <h3 style={{ textAlign: "center" }}>Inventory</h3>
+      <div 
+        style={{ 
+          width: collapsed ? 80 : 256,
+          background: "#f0f2f5", 
+          padding: 10, 
+          overflowY:"auto",
+          maxHeight:"100vh", 
+          transition: 'width 0.2s',
+        }}
+      >
+        <h3 style={{ textAlign: "center", display: collapsed ? 'none' : 'block' }}>Inventory</h3>
+        
+        {/* Collapse Button */}
+        <Button
+          type="primary"
+          onClick={toggleCollapsed}
+          style={{ marginBottom: 16, width: '100%', padding: 0 }}
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        >
+          {collapsed ? null : 'Collapse Menu'}
+        </Button>
+        
 
-        <Menu mode="inline">
+        {/* Menu Section */}
+        <Menu 
+          mode="inline"
+          inlineCollapsed={collapsed}
+        >
+          {/* ==================================== */}
+          {/* 1. HOME & PROFILE */}
+          {/* ==================================== */}
           <Menu.Item
             key="home"
-            icon=<span style={{ fontSize: "24px" }}>{<HomeOutlined />}</span>
-            
+            icon={<HomeOutlined />}
             onClick={handleShowHome}
           >
-            <span style={{ fontSize: "18px", fontWeight:'bold' }}>Home</span>
-
+            Home
           </Menu.Item>
-        </Menu>
 
-        {/* Other menu items */}
-        <Menu mode="inline">
           <Menu.Item
             key="profile"
             icon={<UserOutlined />}
@@ -169,87 +192,97 @@ const handleLogout = async () => {
             Profile
           </Menu.Item>
           
-        
-          { hasAdmin && (<Menu.Item
-            key="users"
-            icon={<UserOutlined />}
-            onClick={handleShowUsers}
-          >
-            Users
-          </Menu.Item>)}
+          <Menu.Divider />
 
-          {hasManager && (<Menu.Item
-            key="issue"
-            icon={<ContainerOutlined />}
-            onClick={handleIssue}
-          >
-            Issue
-          </Menu.Item>)}
-         
+          {/* ==================================== */}
+          {/* 2. TRANSACTIONS (Purchase, Issue, Return) */}
+          {/* ==================================== */}
+          <Menu.ItemGroup key="grp-trans" title={!collapsed && "Transactions"}>
+            {hasManager && (
+              <Menu.Item key="purchases" icon={<ContainerOutlined />} onClick={handleShowPurchases}>
+                Purchase Stock
+              </Menu.Item>
+            )}
 
-          {hasStaff && (<Menu.Item
-            key = "viewstock"
-            icon={<DeliveredProcedureOutlined/>}
-            onClick={handleViewStock}
-
-
-            >
-            View Stock
-            </Menu.Item>
-          )}
-          {hasStaff && (<Menu.Item
-            key="issuedItems"
-            icon={<DeliveredProcedureOutlined />}
-            onClick={handleShowIssuedItems}
-          >
-            Issued Items
-          </Menu.Item>)}
-
-          {hasAdmin && (<Menu.Item
-            key="addrec"
-            icon={<UserOutlined />}
-            onClick={handleAddRecipient}
-          >
-            Add Recipient
-          </Menu.Item>)}
-
-          {hasAdmin && (<Menu.Item
-            key="supplier"
-            icon={<ContainerOutlined />}
-            onClick={handleShowAddSupplier}
-          >
-            Suppliers
-          </Menu.Item>)}
-
-          {hasAdmin && (<Menu.Item
-            key="addCategory"
-            icon={<UserOutlined />}
-            onClick={handleAddCategory}
-          >
-            Add Category
-          </Menu.Item>)}
-
-          {hasManager && (<Menu.Item
-            key="purchases"
-            icon={<ContainerOutlined />}
-            onClick={handleShowPurchases}
-          >
-            Purchase
-          </Menu.Item>)}
-
-          {hasStaff && (<Menu.Item
-            key="purchasesList"
-            icon={<ContainerOutlined />}
-            onClick={handleShowPurchasesList}
-          >
+            {hasManager && (
+              <Menu.Item key="issue" icon={<ContainerOutlined />} onClick={handleIssue}>
+                Issue Items
+              </Menu.Item>
+            )}
             
-            Purchases List
-          </Menu.Item>)}
+            {hasAdmin && (
+              <Menu.Item key="returnstock" icon={<DeliveredProcedureOutlined />} onClick={handleReturnStock}>
+                Return Stock
+              </Menu.Item>
+            )}
+          </Menu.ItemGroup>
+          
+          <Menu.Divider />
 
+          {/* ==================================== */}
+          {/* 3. REPORTS & VIEWS */}
+          {/* ==================================== */}
+          <Menu.ItemGroup key="grp-reports" title={!collapsed && "Reports & Stock"}>
+            {hasStaff && (
+              <Menu.Item key="viewstock" icon={<DeliveredProcedureOutlined/>} onClick={handleViewStock}>
+                View Available Stock
+              </Menu.Item>
+            )}
+
+            {hasStaff && (
+              <Menu.Item key="issuedItems" icon={<DeliveredProcedureOutlined />} onClick={handleShowIssuedItems}>
+                Issued Items List
+              </Menu.Item>
+            )}
+            
+            {hasStaff && (
+              <Menu.Item key="purchasesList" icon={<ContainerOutlined />} onClick={handleShowPurchasesList}>
+                Purchases History
+              </Menu.Item>
+            )}
+          </Menu.ItemGroup>
+
+          <Menu.Divider />
+          
+          {/* ==================================== */}
+          {/* 4. MASTER SETUP (Admin) */}
+          {/* ==================================== */}
+          <Menu.ItemGroup key="grp-admin" title={!collapsed && "Admin/Setup"}>
+            { hasAdmin && (
+              <Menu.Item key="users" icon={<UserOutlined />} onClick={handleShowUsers}>
+                Manage Users
+              </Menu.Item>
+            )}
+            
+            {hasAdmin && (
+              <Menu.Item key="addrec" icon={<UserOutlined />} onClick={handleAddRecipient}>
+                Manage Recipients
+              </Menu.Item>
+            )}
+
+            {hasAdmin && (
+              <Menu.Item key="supplier" icon={<ContainerOutlined />} onClick={handleShowAddSupplier}>
+                Manage Suppliers
+              </Menu.Item>
+            )}
+
+            {hasAdmin && (
+              <Menu.Item key="addCategory" icon={<AppstoreOutlined />} onClick={handleAddCategory}>
+                Manage Categories
+              </Menu.Item>
+            )}
+          </Menu.ItemGroup>
+          
+          <Menu.Divider />
+
+          {/* ==================================== */}
+          {/* 5. LOGOUT (Always Last) */}
+          {/* ==================================== */}
           <Menu.Item
             key="logout"
             icon={<LogoutOutlined />}
             onClick={handleLogout}
+            style={{ marginTop: 'auto', borderTop: '1px solid #ccc' }} 
           >
             Logout
           </Menu.Item>
@@ -258,42 +291,9 @@ const handleLogout = async () => {
         
       </div>
 
-      {/* Content Section */}
+      {/* Content Section (Unchanged) */}
       <div style={{ padding: 20, flex: 1 }}>
-        {loading ? (
-          <Spin size="large" />
-        ) : activePage === "home" ? (
-          <Home />
-
-        ) : activePage === "viewstock" ? (
-          <ViewStock/>
-
-        ) : activePage === "addUser" ? (
-          <AddUser />
-        ) : activePage === "addCategory" ? (
-          <AddCategory />
-        ) : activePage === "issue" ? (
-          <IssueItems />
-        ) : activePage === "issuedItems" ? (
-          <IssuedItemsTable />
-        ) : activePage === "addItems" ? (
-          <AddItems />
-        ) : activePage === "purchases" ? (
-          <Purchases />
-        ) : activePage === "addrec" ? (
-          <Recipients/>
-        ) : activePage === "purchasesList" ? (
-          <PurchasesList />
-        ) : activePage === "addSupplier" ? (
-          <AddSupplier />
-        ) : activePage === "users" ? (
-          <Users />        ) : activePage === "profile" ? ( // Ensure this condition is checked before rendering items
-          <Profile />
-        ) : selectedCategory && itemsData.length > 0 ? (
-          <ItemsTable itemsData={itemsData} setItemsData={setItemsData} />
-        ) : (
-          <h2>No items found for this category</h2>
-        )}
+        {renderContent()}
       </div>
     </div>
   );
