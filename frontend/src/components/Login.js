@@ -32,13 +32,10 @@ const Login = () => {
           navigate("/dash");
           break;
         case "Manager":
-          navigate("/managerdash");
+          navigate("/dash");
           break;
         case "Staff":
-          navigate("/staffdash");
-          break;
-        case "Issuer":
-          navigate("/issuerdash");
+          navigate("/dash");
           break;
         default:
           alert("Unknown role");

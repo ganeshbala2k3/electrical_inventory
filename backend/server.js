@@ -1059,3 +1059,22 @@ app.post("/logout", (req, res) => {
   });
 });
 
+router.get("/category-stock/:categoryId", async (req, res) => {
+  const { categoryId } = req.params;
+
+  const [rows] = await db.query(`
+    SELECT 
+      i.item_id,
+      c.category_name,
+      i.available_qty,
+      GROUP_CONCAT(av.value SEPARATOR ' | ') AS attributes
+    FROM items i
+    JOIN categories c ON c.category_id = i.category_id
+    JOIN item_attributes ia ON ia.item_id = i.item_id
+    JOIN attribute_values av ON av.value_id = ia.attribute_value_id
+    WHERE i.category_id = ?
+    GROUP BY i.item_id
+  `, [categoryId]);
+
+  res.json(rows);
+});

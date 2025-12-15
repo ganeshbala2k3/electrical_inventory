@@ -18,6 +18,7 @@ import AddCategory from './components/categoryadd';
 import IssueItems from './components/issue';
 import Recipients from './components/Recipients';
 import ProtectedRoute from './routewrapper';
+import ViewStock from './components/viewStock';
 
 function App() {
 
@@ -29,7 +30,7 @@ function App() {
          <Route
           path="/dash"
           element={
-            <ProtectedRoute allowedRoles={["Admin"]}>
+            <ProtectedRoute allowedRoles={["Admin","Manager","Staff"]}>
               <Dash/>
             </ProtectedRoute>
           }
@@ -40,16 +41,44 @@ function App() {
             </ProtectedRoute>
           } />
         <Route path="/content" element={<ContentSection />} />
-        <Route path="/issueditems" element={<IssuedItems />} />
-        <Route path="/users" element={<Users />} />
+        <Route path="/issueditems"  element={
+            <ProtectedRoute allowedRoles={["Admin","Manager","Staff"]}>
+              <IssueItems/>
+            </ProtectedRoute>
+          } />
+        <Route path="/users"  element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <Users/>
+            </ProtectedRoute>
+          } />
         <Route path="/home" element={<Home />} />
-        <Route path="/addCategory" element={<AddCategory/>} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/staffdash" element={<Staffdash />} />
-        <Route path="/issuerdash" element={<IssuerDash />} />
-        <Route path="/managerdash/*" element={<ManagerDash />} />
-        <Route path="/issue" element={<IssueItems />} />
-        <Route path="/addrec" element={<Recipients/>} />
+        <Route path="/addCategory"  element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <AddCategory/>
+            </ProtectedRoute>
+          } />
+        <Route path="/profile"  element={
+            <ProtectedRoute allowedRoles={["Admin","Manager","Staff"]}>
+              <Profile/>
+            </ProtectedRoute>
+          } />
+        <Route path="/issue"  element={
+            <ProtectedRoute allowedRoles={["Admin","Manager"]}>
+              <IssueItems/>
+            </ProtectedRoute>
+          } />
+        <Route path="/addrec"  element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <Recipients/>
+            </ProtectedRoute>
+          } />
+        <Route path="/viewstock"  element={
+            <ProtectedRoute allowedRoles={["Admin","Manager","Staff"]}>
+              <ViewStock/>
+            </ProtectedRoute>
+          } />
+
+
 
         
 
